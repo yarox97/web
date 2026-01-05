@@ -18,7 +18,7 @@
       </div>
 
       <div class="header-right">
-        <button v-if="isAdmin" class="club-button create-btn">
+        <button v-if="isAdmin" @click="goToCreate()" class="club-button create-btn">
           + Create
         </button>
         <button class="club-button join-btn" @click="openModal">
@@ -126,6 +126,10 @@ const joinForm = ref({
 })
 
 const errorMessage = ref('') 
+
+const goToCreate = () => {
+  router.push({name: 'CreateClub'})
+}
 
 const closeModal = () => {
   isModalOpen.value = false

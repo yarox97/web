@@ -60,19 +60,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="sidebar-inner">
+  <div class="sidebar-inner"> 
     
     <div class="sidebar-header">
-      <div class="brand-section">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-            <path d="M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm-2 6a2 2 0 1 0 0 4h4a2 2 0 1 0 0-4h-4zm-3 6a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v2a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-2z" />
-            <path d="M6 18a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H6z"/>
-          </svg>
-        </div>
-        <span class="brand-name">VolleyMS</span>
-      </div>
-
       <button class="close-btn" @click="$emit('close-sidebar')" aria-label="Close Sidebar">
         <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>

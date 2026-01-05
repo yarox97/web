@@ -36,6 +36,12 @@ const router = createRouter({
       meta: { layout: 'empty' } // Если используешь систему лейаутов, тут можно указать пустой
     },
     {
+      path: '/app/clubs/create',
+      name: 'CreateClub',
+      component: () => import('@/views/CreateClubWizard.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/app',
       component: MainLayout,
       children: [
