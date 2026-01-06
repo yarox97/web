@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import AppHeader from '@/components/AppHeader.vue';
-import AppSidebar from '@/components/AppSidebar.vue';
+import AppHeader from '@/components/shared/AppHeader.vue'
+import AppSidebar from '@/components/shared/AppSidebar.vue';
 
 const isMobileMenuOpen = ref(false);
 const router = useRouter();

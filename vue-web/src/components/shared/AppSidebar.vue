@@ -64,6 +64,10 @@ const closeOnMobile = () => {
   }
 };
 
+const goToProfile = () => {
+  router.push({ name: 'profile' })
+}
+
 onMounted(() => {
   notificationStore.fetchUnreadCount();
 })
@@ -78,8 +82,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <router-link to="profile" class="user-link">
-    <div class="user-section">
+    <div class="user-section" @click="goToProfile">
       <div class="avatar-wrapper">
         <img :src="avatar" alt="User Avatar" class="avatar-img" />
       </div>
@@ -87,7 +90,6 @@ onMounted(() => {
         <span class="user-name">{{ fullName }}</span>
       </div>
     </div>
-    </router-link>
 
     <div class="scroll-area">
       <nav class="nav-menu">
@@ -164,6 +166,7 @@ onMounted(() => {
   margin-bottom: 20px;
   padding: 10px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .avatar-img {

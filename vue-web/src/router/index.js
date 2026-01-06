@@ -51,8 +51,13 @@ const router = createRouter({
           component: CockPitView
         },
         {
-          path: 'profile',
+          path: '/app/profile/me',
           name: 'profile',
+          component: ProfileView
+        },
+        {
+          path: 'profile/:username', 
+          name: 'UserProfile',       
           component: ProfileView
         },
         {
