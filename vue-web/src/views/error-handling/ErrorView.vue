@@ -5,11 +5,8 @@ import { useRoute, useRouter } from 'vue-router';
 const route = useRoute();
 const router = useRouter();
 
-// Получаем код ошибки из параметра маршрута (например /error/500) 
-// Если кода нет, считаем что это 404
 const errorCode = computed(() => route.params.code || '404');
 
-// База данных текстов ошибок
 const errorContent = {
   '404': {
     title: 'Page Not Found',
@@ -70,7 +67,7 @@ const goHome = () => router.push('/');
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f3f4f6; /* Светло-серый фон */
+  background-color: #f3f4f6;
   padding: 20px;
 }
 
@@ -83,10 +80,9 @@ const goHome = () => router.push('/');
   max-width: 500px;
   width: 100%;
   text-align: center;
-  overflow: hidden; /* Обрезает цифру фона, если она вылезет */
+  overflow: hidden;
 }
 
-/* Огромная цифра на фоне */
 .bg-number {
   position: absolute;
   top: 50%;
@@ -95,14 +91,13 @@ const goHome = () => router.push('/');
   font-size: 8rem;
   font-weight: 800;
   color: #0ea5e9;
-  opacity: 0.08; /* Прозрачность */
+  opacity: 0.08;
   z-index: 0;
-  pointer-events: none; /* Чтобы сквозь нее можно было кликать */
+  pointer-events: none; 
   line-height: 1;
   user-select: none;
 }
 
-/* Контент должен быть выше фона */
 .content-relative {
   position: relative;
   z-index: 1;
@@ -161,7 +156,6 @@ const goHome = () => router.push('/');
   background-color: #e5e7eb;
 }
 
-/* Мобильный адаптив */
 @media (max-width: 480px) {
   .bg-number {
     font-size: 5rem;

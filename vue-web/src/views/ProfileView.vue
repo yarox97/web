@@ -1,25 +1,14 @@
 <script setup>
 import { computed } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
-import SalaryPiechart from '@/components/Profile/SalaryPiechart.vue';
+import SalaryPiechart from '@/components/profile/SalaryPiechart.vue';
+import { formatDate } from '@/utils/dateFormater';
+import Spinner from '@/components/shared/Spinner.vue';
 
 const authStore = useAuthStore();
 const user = computed(() => authStore.user);
 
-const userAvatar = computed(() => {
-  if (user.value?.avatarUrl) return user.value.avatarUrl;
-  const name = `${user.value?.firstName || ''} ${user.value?.lastName || ''}`.trim() || 'User';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D8ABC&color=fff&size=128`;
-});
-
-const formatDate = (dateString) => {
-  if (!dateString) return '';
-  return new Date(dateString).toLocaleDateString('en-En', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-};
+const userAvatar = computed(() => authStore.userAvatar);
 
 </script>
 
@@ -27,7 +16,7 @@ const formatDate = (dateString) => {
   <div class="profile-container">
     
     <div v-if="authStore.isLoading" class="state-box">
-      <div class="spinner"></div>
+      <Spinner></Spinner>
     </div>
 
     <div v-else-if="!user" class="state-box">
@@ -65,17 +54,39 @@ const formatDate = (dateString) => {
           </div>
         </div>
       </div>
+
+      <div class="charts-row">
+        <div class="card chart-card">
+           <h3 class="chart-title">Salary Distribution</h3>
+           <div class="chart-content">
+              <SalaryPiechart />
+           </div>
+        </div>
+
+        <div class="card chart-card">
+           <h3 class="chart-title">Activity Overview</h3>
+           <div class="chart-content placeholder-chart">
+              <div class="placeholder-bar" style="height: 40%"></div>
+              <div class="placeholder-bar" style="height: 70%"></div>
+              <div class="placeholder-bar" style="height: 50%"></div>
+              <div class="placeholder-bar" style="height: 80%"></div>
+              <div class="placeholder-bar" style="height: 30%"></div>
+              <div class="placeholder-bar" style="height: 60%"></div>
+           </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
 
 <style scoped>
-/* --- Layout --- */
 .profile-container {
   max-width: 95%;
   margin: 0 auto;
   font-family: 'Segoe UI', sans-serif;
   color: #1f2937;
+  padding-bottom: 40px;
 }
 
 .card {
@@ -95,9 +106,8 @@ const formatDate = (dateString) => {
   border: 1px dashed #e5e7eb;
 }
 
-/* --- Header Styles --- */
 .profile-header {
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .header-bg {
@@ -107,9 +117,9 @@ const formatDate = (dateString) => {
 
 .header-content {
   display: flex;
-  flex-direction: column; /* Mobile first: колонка */
-  align-items: center;    /* Центрируем всё */
-  margin-top: -65px;      /* Поднимаем контент на фон */
+  flex-direction: column;
+  align-items: center;
+  margin-top: -65px;
   padding: 0 20px 30px;
 }
 
@@ -153,82 +163,68 @@ const formatDate = (dateString) => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: center; /* Центрируем мета-инфо на мобилке */
+  align-items: center;
 }
 
 .meta-row {
   display: flex;
-  align-items: center; /* ВАЖНО: Выравниваем иконку и текст по центру */
+  align-items: center;
   gap: 10px;
   color: #4b5563;
   font-size: 0.95rem;
 }
 
 .icon-box {
-  display: flex; /* Чтобы SVG внутри не прыгал */
+  display: flex;
   align-items: center;
   color: #9ca3af;
 }
 
-/* --- Clubs Styles --- */
-.section-title {
-  font-size: 1.3rem;
-  font-weight: 700;
-  margin-bottom: 20px;
-  padding-left: 5px;
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr; 
+  gap: 20px;
+}
+
+.chart-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-title {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
   color: #374151;
 }
 
-.clubs-grid {
-  max-width: 70%;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-.club-card {
+.chart-content {
+  flex: 1;
+  min-height: 300px;
   display: flex;
-  justify-content: space-between;
-  align-items: center; /* ВАЖНО: Бейдж всегда по центру вертикали */
-  padding: 20px 24px;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.club-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  border-color: #d1d5db;
-}
-
-.club-name {
-  margin: 0 0 4px 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.join-date {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #9ca3af;
-}
-
-.role-badge {
-  display: inline-flex;
   align-items: center;
-  padding: 6px 14px;
-  border-radius: 50px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  justify-content: center;
 }
 
-.badge-primary { background-color: #eff6ff; color: #1d4ed8; }
-.badge-success { background-color: #f0fdf4; color: #15803d; }
-.badge-gray    { background-color: #f3f4f6; color: #374151; }
+.placeholder-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  padding: 20px;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px dashed #e5e7eb;
+  height: 300px;
+}
 
-/* --- Loading Spinner --- */
+.placeholder-bar {
+  width: 10%;
+  background-color: #e5e7eb;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s;
+}
+
 .spinner {
   width: 40px;
   height: 40px;
@@ -241,32 +237,31 @@ const formatDate = (dateString) => {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* --- Desktop Version (Media Query) --- */
 @media (min-width: 768px) {
-  .clubs-grid {
-    grid-template-columns: repeat(2, 1fr); /* Две колонки на ПК */
+  .charts-row {
+    grid-template-columns: 1fr 1fr; 
   }
 
   .header-content {
-    flex-direction: row; /* В ряд */
-    align-items: flex-end; /* Текст прижат к низу аватарки */
-    text-align: left; /* Текст слева */
+    flex-direction: row;
+    align-items: flex-end;
+    text-align: left;
     padding: 0 30px 30px;
-    gap: 30px; /* Отступ между аватаркой и текстом */
+    gap: 30px;
   }
 
   .avatar-container {
-    margin-bottom: 0; /* Убираем отступ снизу у аватарки */
+    margin-bottom: 0;
   }
 
   .user-details {
-    padding-bottom: 10px; /* Небольшая коррекция, чтобы текст был ровно */
+    padding-bottom: 10px;
     text-align: left;
   }
   
   .meta-info {
-    align-items: flex-start; /* Выравниваем иконки по левому краю */
-    flex-direction: row; /* На ПК мета-инфо можно в строку (опционально) */
+    align-items: flex-start;
+    flex-direction: row;
     gap: 20px;
   }
 }

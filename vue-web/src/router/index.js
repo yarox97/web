@@ -9,7 +9,8 @@ import RegisterView from '../views/identity/RegisterView.vue'
 import CockPitView from '../views/CockPitView.vue'
 import ProfileView from '@/views/ProfileView.vue';
 import ErrorView from '../views/error-handling/ErrorView.vue'
-import ClubsView from '@/views/ClubsView.vue';
+import ClubsView from '@/views/clubs/ClubsView.vue';
+import ClubDetailsView from '@/views/clubs/ClubDetailsView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -33,7 +34,6 @@ const router = createRouter({
       path: '/error/:code?', // :code? значит параметр необязателен
       name: 'error',
       component: ErrorView,
-      meta: { layout: 'empty' } // Если используешь систему лейаутов, тут можно указать пустой
     },
     {
       path: '/app/clubs/create',
@@ -59,6 +59,11 @@ const router = createRouter({
           path: 'clubs',
           name: 'clubs',
           component: ClubsView
+        },
+        {
+          path: '/app/club/:id',
+          name: 'ClubDetails',
+          component: ClubDetailsView
         }
       ]
     },

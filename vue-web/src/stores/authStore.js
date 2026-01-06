@@ -1,15 +1,6 @@
 import { defineStore } from 'pinia';
-import axios from 'axios';
 import router from '@/router';
-
-export const api = axios.create({
-
-  baseURL: import.meta.env.VITE_API_URL || 'https://localhost:7207', 
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  }
-});
+import api from '@/services/api'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({

@@ -1,7 +1,8 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router'; 
-import { useAuthStore, api } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/authStore';
+import { clubService } from '@/services/clubService';
 
 const router = useRouter(); 
 const authStore = useAuthStore(); 
@@ -30,7 +31,7 @@ const progressPercentage = computed(() => {
 const isLastStep = computed(() => currentStep.value === totalSteps);
 
 const volleyboxId = computed(() => {
-  if (!formData.volleyboxUrl) return null;
+  if (!formData.volleyboxUrl) return '';
   const match = formData.volleyboxUrl.match(/-t(\d+)/);
   return match ? match[1] : null;
 });
@@ -76,7 +77,6 @@ const submitForm = async () => {
 
   const payload = {
     creatorId: currentUser.id || currentUser.Id, 
-    
     name: formData.name,
     description: formData.description,
     avatarURL: formData.avatarUrl,
@@ -85,12 +85,12 @@ const submitForm = async () => {
   }; 
 
   try {
-    const response = await api.post('/api/club', payload); 
+    const data = await clubService.createClub(payload);
     
-    if (response.data && (response.data.isSuccess || response.data.value)) {
+    if (data && (data.isSuccess || data.value)) {
       router.push({ name: 'Clubs' });
     } else {
-        console.error(response.data);
+        console.error(data);
     }
   } catch (error) {
      console.error(error);

@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
+import Spinner from './components/shared/Spinner.vue';
 
 const authStore = useAuthStore();
 
@@ -8,7 +9,7 @@ const authStore = useAuthStore();
 
 <template>
   <div v-if="authStore.isLoading" class="app-loading">
-    <div class="spinner"></div>
+    <spinner></spinner>
     <span>Loading VolleyMS...</span>
   </div>
 

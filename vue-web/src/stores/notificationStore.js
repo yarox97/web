@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { api } from '@/stores/authStore'; 
+import api from '@/services/api';
 
 export const useNotificationStore = defineStore('notification', {
   state: () => ({

@@ -40,6 +40,61 @@
   </div>
 </template>
 
+
+
+<script>
+import axios from "axios";
+import { useAuthStore } from "@/stores/authStore";
+export default {
+  name: "LoginView",
+
+  setup() {
+    const authStore = useAuthStore();
+    return { authStore };
+  },
+
+  data() {
+    return {
+      userName: "",
+      password: "",
+      error: ""
+    };
+  },
+
+  methods: {
+    async login() {
+  this.error = "";
+  try {
+    const payload = {
+      userName: this.userName,
+      password: this.password
+    };
+
+    await axios.post(
+      "https://localhost:7207/api/auth/login",
+      payload,
+      { withCredentials: true } 
+    );
+
+    // start of the session
+    await this.authStore.loginSuccess();
+
+    this.$router.push("app/cockpit"); 
+  } catch (error) {
+    console.error(error);
+    this.error =
+      error.response?.data?.message ||
+      "An error occurred during login.";
+  }
+},
+
+    async handleSubmit() {
+      await this.login();
+    }
+  }
+};
+</script>
+
 <style scoped>
 .login-view {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -123,56 +178,3 @@ button:hover {
   text-decoration: none;
 }
 </style>
-
-<script>
-import axios from "axios";
-import { useAuthStore } from "@/stores/authStore";
-export default {
-  name: "LoginView",
-
-  setup() {
-    const authStore = useAuthStore();
-    return { authStore };
-  },
-
-  data() {
-    return {
-      userName: "",
-      password: "",
-      error: ""
-    };
-  },
-
-  methods: {
-    async login() {
-  this.error = "";
-  try {
-    const payload = {
-      userName: this.userName,
-      password: this.password
-    };
-
-    await axios.post(
-      "https://localhost:7207/api/auth/login",
-      payload,
-      { withCredentials: true } 
-    );
-
-    // start of the session
-    await this.authStore.loginSuccess();
-
-    this.$router.push("app/cockpit"); 
-  } catch (error) {
-    console.error(error);
-    this.error =
-      error.response?.data?.message ||
-      "An error occurred during login.";
-  }
-},
-
-    async handleSubmit() {
-      await this.login();
-    }
-  }
-};
-</script>
