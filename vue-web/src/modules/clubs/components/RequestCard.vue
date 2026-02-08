@@ -39,9 +39,9 @@ const getStatusClass = (status) => {
     </div>
 
     <div class="card-footer">
-       <button v-if="request.status === 'Pending'" class="view-btn btn-cancel" @click="$emit('cancel', request.id)">
-         Cancel
-       </button>
+       <span class="status-text" v-if="request.status === 'Pending'">
+         Pending...
+        </span> 
        <span v-else class="status-text">
          {{ request.status === 'Approved' ? 'You can now enter the club' : 'Request closed' }}
        </span>

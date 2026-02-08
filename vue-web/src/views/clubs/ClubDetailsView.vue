@@ -39,10 +39,32 @@ const imageLoadError = ref(false)
 const requests = ref([])
 const loadingRequests = ref(false)
 const requestFilter = ref('Pending')
+const requestsLoaded = ref(false)
 
 // Members State
 const members = ref([])
 const loadingMembers = ref(false)
+const membersLoaded = ref(false)
+
+// --- Contracts State ---
+const contracts = ref([])
+const loadingContracts = ref(false)
+const contractsLoaded = ref(false)
+const contractPage = ref(1)
+const contractPageSize = 10
+const contractTotal = ref(0)
+const activeMenuContractId = ref(null) // ID of the contract with open menu
+
+// Create Contract State
+const showContractModal = ref(false)
+const isCreatingContract = ref(false)
+const createContractForm = ref({
+    memberId: '',
+    monthlySalary: null,
+    currency: 'USD',
+    beginsFrom: '',
+    endsBy: ''
+})
 
 // --- Permissions ---
 const myClubRole = computed(() => {
@@ -55,6 +77,8 @@ const myClubRole = computed(() => {
 const canEdit = computed(() => ['President', 'Creator'].includes(myClubRole.value));
 const canViewMembers = computed(() => !!myClubRole.value);
 const canViewRequests = computed(() => ['President', 'Creator', 'Coach'].includes(myClubRole.value));
+const canViewContracts = computed(() => ['President', 'Creator'].includes(myClubRole.value));
+const canCreateContract = computed(() => ['President', 'Creator'].includes(myClubRole.value));
 
 // Helper: Get weight of a role string
 const getRoleWeight = (roleName) => {
@@ -65,23 +89,19 @@ const getRoleWeight = (roleName) => {
 const sortedMembers = computed(() => {
   return [...members.value].sort((a, b) => {
     const myId = authStore.user?.id;
-
-    // 1. Current user always on top
     if (a.userId === myId) return -1;
     if (b.userId === myId) return 1;
-
-    // 2. Sort by Role Weight (Descending)
     const weightA = getRoleWeight(a.role);
     const weightB = getRoleWeight(b.role);
-    
-    if (weightB !== weightA) {
-        return weightB - weightA;
-    }
-
-    // 3. Tie-breaker: Alphabetical by name
+    if (weightB !== weightA) return weightB - weightA;
     return (a.fullName || '').localeCompare(b.fullName || '');
   });
 });
+
+// Filter members eligible for contract (exclude self)
+const eligibleForContract = computed(() => {
+    return sortedMembers.value.filter(m => m.userId !== authStore.user?.id);
+})
 
 // Helper: Return roles that I am allowed to assign
 const getAllowedRoles = () => {
@@ -140,11 +160,13 @@ const saveClub = async () => {
 }
 
 // --- API: Members Logic ---
-const fetchMembers = async () => {
+const fetchMembers = async (force = false) => {
+  if (!canViewMembers.value) return
+  if (membersLoaded.value && !force) return 
+
   loadingMembers.value = true
   try {
     const response = await api.get(`/api/${clubId}/members`)
-    
     members.value = response.data.map(m => {
         const u = m.user || m.User || m; 
         return {
@@ -159,6 +181,7 @@ const fetchMembers = async () => {
             tempRole: m.role || m.Role || 'Member'
         };
     })
+    membersLoaded.value = true
   } catch (e) {
     console.error("Failed to fetch members", e)
   } finally {
@@ -166,7 +189,10 @@ const fetchMembers = async () => {
   }
 }
 
-const fetchRequests = async () => {
+const fetchRequests = async (force = false) => {
+  if (!canViewRequests.value) return
+  if (requestsLoaded.value && !force) return
+
   loadingRequests.value = true
   try {
     const response = await api.get(`/api/joinClubRequests/${clubId}`)
@@ -184,11 +210,144 @@ const fetchRequests = async () => {
             selectedRole: 'Player' 
         }
     })
+    requestsLoaded.value = true
   } catch (e) {
     console.error("Failed to fetch requests", e)
   } finally {
     loadingRequests.value = false
   }
+}
+
+// --- API: Contracts Logic ---
+const fetchContracts = async (force = false) => {
+    if (!canViewContracts.value) return;
+    if (contractsLoaded.value && !force) return;
+
+    loadingContracts.value = true;
+    try {
+        const response = await api.get(`/api/contracts/club/${clubId}/contracts`, {
+            params: {
+                pageNumber: contractPage.value,
+                pageSize: contractPageSize
+            }
+        });
+        
+        if (response.data && response.data.items) {
+            contracts.value = response.data.items.map(c => ({
+                id: c.id || c.Id,
+                memberId: c.memberId || c.MemberId,
+                memberName: c.memberName || c.MemberName,
+                memberSurname: c.memberSurname || c.MemberSurname,
+                startDate: c.startDate || c.StartDate,
+                endDate: c.endDate || c.EndDate,
+                isActive: c.isActive || c.IsActive,
+                salary: c.salary || c.Salary,
+                currency: c.currency || c.Currency
+            }));
+            contractTotal.value = response.data.totalCount || 0;
+            contractsLoaded.value = true;
+        }
+    } catch (e) {
+        console.error("Failed to fetch contracts", e);
+    } finally {
+        loadingContracts.value = false;
+    }
+}
+
+const changeContractPage = (direction) => {
+    if (direction === 'next') contractPage.value++;
+    else if (direction === 'prev' && contractPage.value > 1) contractPage.value--;
+    fetchContracts(true);
+}
+
+// --- Contract Actions ---
+const toggleContractMenu = (id) => {
+    if (activeMenuContractId.value === id) {
+        activeMenuContractId.value = null;
+    } else {
+        activeMenuContractId.value = id;
+    }
+}
+
+const closeContractMenu = () => {
+    activeMenuContractId.value = null;
+}
+
+const terminateContract = async (contract) => {
+    if(!confirm(`Are you sure you want to terminate the contract for ${contract.memberName} ${contract.memberSurname}? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        // NOTE: Adjust endpoint based on backend implementation (PUT /end or DELETE /id)
+        await api.put(`/api/contracts/${contract.id}/end`); 
+        
+        // Optimistic update or refresh
+        alert("Contract terminated.");
+        closeContractMenu();
+        await fetchContracts(true);
+    } catch (e) {
+        console.error(e);
+        alert("Failed to terminate contract.");
+    }
+}
+
+// --- Contract Creation Logic ---
+const openCreateContractModal = async () => {
+    if (!membersLoaded.value) {
+        await fetchMembers(true);
+    }
+    createContractForm.value = {
+        memberId: '',
+        monthlySalary: null,
+        currency: 'USD',
+        beginsFrom: new Date().toISOString().split('T')[0],
+        endsBy: ''
+    }
+    showContractModal.value = true;
+}
+
+const closeContractModal = () => {
+    showContractModal.value = false;
+}
+
+const submitContract = async () => {
+    if(!createContractForm.value.memberId || !createContractForm.value.monthlySalary || !createContractForm.value.beginsFrom || !createContractForm.value.endsBy) {
+        alert("Please fill in all fields");
+        return;
+    }
+    if(createContractForm.value.monthlySalary < 0) {
+        alert("Salary cannot be negative");
+        return;
+    }
+
+    isCreatingContract.value = true;
+    try {
+        const payload = {
+            memberId: createContractForm.value.memberId,
+            clubId: clubId,
+            monthlySalary: parseFloat(createContractForm.value.monthlySalary),
+            currency: createContractForm.value.currency,
+            beginsFrom: new Date(createContractForm.value.beginsFrom).toISOString(),
+            endsBy: new Date(createContractForm.value.endsBy).toISOString(),
+            responserId: authStore.user?.id
+        };
+
+        await api.post('/api/contracts/assign-contract', payload);
+        
+        await fetchContracts(true);
+        closeContractModal();
+        alert("Contract created successfully!");
+    } catch (e) {
+        console.error("Failed to create contract", e);
+        if(e.response && e.response.data && e.response.data.message) {
+            alert("Error: " + e.response.data.message);
+        } else {
+            alert("Failed to create contract.");
+        }
+    } finally {
+        isCreatingContract.value = false;
+    }
 }
 
 const handleImageError = (event, userName) => {
@@ -223,15 +382,10 @@ const saveMemberRole = async (member) => {
             JSON.stringify(member.tempRole), 
             { headers: { 'Content-Type': 'application/json' } }
         );
-        
         member.role = member.tempRole;
         member.isEditing = false;
     } catch (e) {
         console.error("Failed to update role", e);
-        // Полезно вывести детали ошибки в консоль, если они есть
-        if (e.response && e.response.data) {
-             console.log("Server error details:", e.response.data);
-        }
         alert("Failed to update role.");
     }
 }
@@ -259,12 +413,9 @@ const confirmKick = async (member) => {
 const canManageMember = (member) => {
     if (!canEdit.value) return false;
     if (authStore.user?.id === member.userId) return false;
-
     const myWeight = getRoleWeight(myClubRole.value);
     const targetWeight = getRoleWeight(member.role);
-
     if (targetWeight >= myWeight) return false;
-
     return true;
 }
 
@@ -294,10 +445,11 @@ const handleRequest = async (requestItem, action) => {
         if (reqIndex !== -1) {
             requests.value[reqIndex].status = action === 'Approve' ? 'Approved' : 'Rejected'
         }
-        if (action === 'Approve' && activeTab.value === 'members') fetchMembers();
+        if (action === 'Approve' && activeTab.value === 'members') fetchMembers(true);
+        if (action === 'Approve' && activeTab.value !== 'members') membersLoaded.value = false;
     } catch (e) {
         console.error(e);
-        alert(`Failed to ${action} request. Check console for details.`);
+        alert(`Failed to ${action} request.`);
     }
 }
 
@@ -319,6 +471,15 @@ const getRoleBadgeClass = (role) => {
 const goToProfile = (userName) => {
     if (!userName) return; 
     router.push({ name: 'UserProfile', params: { username: userName } })
+}
+
+const goToContractDetails = (contractId) => {
+    router.push({ name: 'ContractDetails', params: { id: contractId } })
+}
+
+const formatCurrency = (amount, currency) => {
+    if(amount == null) return '-';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(amount);
 }
 
 const clubAvatar = computed(() => {
@@ -358,18 +519,19 @@ const goToClubs = () => router.push({ name: 'clubs' })
 // --- TAB SYNCHRONIZATION LOGIC ---
 const checkTabParam = () => {
     const tabParam = route.query.tab
-    if (tabParam && ['overview', 'members', 'requests'].includes(tabParam)) {
+    if (tabParam && ['overview', 'members', 'requests', 'contracts'].includes(tabParam)) {
         activeTab.value = tabParam
     }
 }
 
 watch(activeTab, (newTab) => {
-    if (newTab === 'requests' && canViewRequests.value) fetchRequests()
-    if (newTab === 'members' && canViewMembers.value) fetchMembers()
+    if (newTab === 'requests') fetchRequests()
+    if (newTab === 'members') fetchMembers()
+    if (newTab === 'contracts') fetchContracts()
 })
 
 watch(() => route.query.tab, (newTab) => {
-    if (newTab && ['overview', 'members', 'requests'].includes(newTab)) {
+    if (newTab && ['overview', 'members', 'requests', 'contracts'].includes(newTab)) {
         activeTab.value = newTab
     }
 })
@@ -377,11 +539,16 @@ watch(() => route.query.tab, (newTab) => {
 onMounted(async () => {
     await fetchClub()
     checkTabParam()
+    if (activeTab.value === 'members') fetchMembers()
+    if (activeTab.value === 'requests') fetchRequests()
+    if (activeTab.value === 'contracts') fetchContracts()
 })
 </script>
 
 <template>
   <div class="page-container">
+    <div v-if="activeMenuContractId" class="menu-backdrop" @click="closeContractMenu"></div>
+
     <div v-if="loading" class="state-box"><Spinner></Spinner></div>
     <div v-else-if="error" class="state-box error">
       <div class="error-icon">⚠️</div>
@@ -432,11 +599,11 @@ onMounted(async () => {
           Join Requests
           <span v-if="requests.some(r => r.status === 'Pending')" class="badge-dot"></span>
         </button>
+        <button v-if="canViewContracts" class="tab-btn" :class="{ active: activeTab === 'contracts' }" @click="activeTab = 'contracts'">Contracts</button>
       </div>
 
       <div v-if="activeTab === 'overview'" class="tab-content">
         <div class="grid-layout" :class="{ 'full-width': !volleyboxWidgetSrc || isEditing }">
-          
           <div class="left-column">
             <div v-if="club.joinCode && !isEditing" class="card invite-card">
               <div class="invite-header"><span class="card-label">Internal Access</span></div>
@@ -456,18 +623,15 @@ onMounted(async () => {
 
             <div class="card info-card">
               <h3 class="section-title">About the Club</h3>
-              
               <template v-if="isEditing">
                 <textarea v-model="editForm.description" class="edit-textarea" rows="8"></textarea>
               </template>
-              
               <template v-else>
                 <div v-if="club.description" class="club-desc">{{ club.description }}</div>
                 <div v-else class="club-desc placeholder-text">
                     <p>Welcome to <strong>{{ club.name }}</strong>!</p>
                     <p>This club is part of our volleyball community. Stay tuned for updates and team announcements.</p>
                 </div>
-
                 <div class="club-highlights">
                     <h4 class="highlights-title">Club Highlights</h4>
                     <div class="stats-grid">
@@ -490,7 +654,6 @@ onMounted(async () => {
               </template>
             </div>
           </div>
-
           <div class="right-column" v-if="volleyboxWidgetSrc && !isEditing">
             <div class="card vb-card widget-card">
               <div class="vb-header"><span class="vb-logo">🏐</span><span class="vb-title">Next Match</span></div>
@@ -498,7 +661,6 @@ onMounted(async () => {
               <div class="vb-footer"><small>Powered by Volleybox</small></div>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -508,7 +670,6 @@ onMounted(async () => {
           <div class="empty-icon">👥</div>
           <p>No members found.</p>
         </div>
-
         <div v-else class="members-list">
              <div 
                 v-for="member in sortedMembers" 
@@ -545,23 +706,15 @@ onMounted(async () => {
                             <button class="btn-cancel-kick" @click.stop="cancelKick(member)">Cancel</button>
                          </div>
                       </template>
-
                       <template v-else-if="member.isEditing">
                           <div class="edit-role-container" @click.stop>
                               <select v-model="member.tempRole" class="role-select-styled">
-                                 <option 
-                                     v-for="role in getAllowedRoles()" 
-                                     :key="role" 
-                                     :value="role"
-                                 >
-                                     {{ role }}
-                                 </option>
+                                 <option v-for="role in getAllowedRoles()" :key="role" :value="role">{{ role }}</option>
                               </select>
                               <button class="btn-icon-action save" @click.stop="saveMemberRole(member)" title="Save">✓</button>
                               <button class="btn-icon-action cancel" @click.stop="cancelMemberEdit(member)" title="Cancel">✕</button>
                           </div>
                       </template>
-
                       <template v-else>
                           <span class="role-badge" :class="getRoleBadgeClass(member.role)">{{ member.role }}</span>
                           <div v-if="canManageMember(member)" class="manage-buttons">
@@ -581,21 +734,15 @@ onMounted(async () => {
              {{ filter }}
            </button>
         </div>
-
         <div v-if="loadingRequests" class="state-box"><Spinner /></div>
         <div v-else-if="filteredRequests.length === 0" class="state-box">
           <div class="empty-icon">📭</div>
           <p>No {{ requestFilter !== 'All' ? requestFilter.toLowerCase() : '' }} requests found.</p>
         </div>
-
         <div v-else class="requests-grid">
           <div v-for="req in filteredRequests" :key="req.id" class="card request-card clickable-card" @click="goToProfile(req.userName)">
              <div class="req-avatar">
-                <img 
-                    :src="req.userAvatar || getAvatar(req.userName)" 
-                    alt="User"
-                    @error="(e) => handleImageError(e, req.userName)"
-                />
+                <img :src="req.userAvatar || getAvatar(req.userName)" alt="User" @error="(e) => handleImageError(e, req.userName)" />
              </div>
              <div class="req-info">
                 <h4 class="req-fullname">
@@ -606,7 +753,6 @@ onMounted(async () => {
                 <div v-if="req.email" class="req-email">✉️ {{ req.email }}</div>
                 <div class="req-meta">📅 {{ formatDate(req.createdAt) }}</div>
              </div>
-             
              <div class="req-actions">
                 <template v-if="req.status === 'Pending'">
                   <div class="role-selector" @click.stop>
@@ -627,7 +773,111 @@ onMounted(async () => {
         </div>
       </div>
 
+      <div v-else-if="activeTab === 'contracts'" class="tab-content">
+         <div class="actions-header" v-if="canCreateContract">
+             <button class="btn-primary" @click="openCreateContractModal">+ Create Contract</button>
+         </div>
+
+         <div v-if="loadingContracts" class="state-box"><Spinner /></div>
+         <div v-else-if="contracts.length === 0" class="state-box">
+            <div class="empty-icon">📄</div>
+            <p>No contracts found.</p>
+         </div>
+         
+         <div v-else>
+            <div class="contracts-grid">
+                <div v-for="contract in contracts" :key="contract.id" class="card contract-card clickable-card" @click="goToContractDetails(contract.id)">
+                    
+                    <div class="card-menu" v-if="canEdit">
+                        <button class="menu-btn" @click.stop="toggleContractMenu(contract.id)">⋮</button>
+                        <div v-if="activeMenuContractId === contract.id" class="menu-dropdown">
+                            <button class="menu-item menu-item-danger" @click.stop="terminateContract(contract)">
+                                Terminate Contract
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="contract-header">
+                        <div class="req-avatar compact-avatar">
+                            <img :src="getAvatar(contract.memberName)" alt="User" />
+                        </div>
+                        <div class="req-info">
+                            <h4 class="req-fullname">{{ contract.memberName }} {{ contract.memberSurname }}</h4>
+                            <span class="status-badge" :class="contract.isActive ? 'status-approved' : 'status-rejected'">
+                                {{ contract.isActive ? 'Active' : 'Expired' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="contract-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Period</span>
+                            <span class="detail-value">{{ formatDate(contract.startDate) }} - {{ formatDate(contract.endDate) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Salary</span>
+                            <span class="detail-value highlight-value">{{ formatCurrency(contract.salary, contract.currency) }} / mo</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pagination-controls" v-if="contractTotal > contractPageSize">
+                <button class="btn-secondary pagination-btn" :disabled="contractPage === 1 || loadingContracts" @click="changeContractPage('prev')">Previous</button>
+                <span class="page-info">Page {{ contractPage }}</span>
+                <button class="btn-secondary pagination-btn" :disabled="(contractPage * contractPageSize) >= contractTotal || loadingContracts" @click="changeContractPage('next')">Next</button>
+            </div>
+         </div>
+      </div>
+
     </div>
+
+    <div v-if="showContractModal" class="modal-overlay" @click.self="closeContractModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Create New Contract</h3>
+                <button class="close-btn" @click="closeContractModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Member</label>
+                    <select v-model="createContractForm.memberId" class="edit-input">
+                        <option value="" disabled>Select a member...</option>
+                        <option v-for="m in eligibleForContract" :key="m.userId" :value="m.userId">
+                            {{ m.fullName }} (@{{ m.userName }})
+                        </option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Monthly Salary</label>
+                    <div class="input-group">
+                        <input type="number" v-model="createContractForm.monthlySalary" class="edit-input" placeholder="0.00" min="0" step="0.01">
+                        <select v-model="createContractForm.currency" class="edit-input currency-select">
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="PLN">PLN</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" v-model="createContractForm.beginsFrom" class="edit-input">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" v-model="createContractForm.endsBy" class="edit-input">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @click="closeContractModal" :disabled="isCreatingContract">Cancel</button>
+                <button class="btn-primary" @click="submitContract" :disabled="isCreatingContract">
+                    {{ isCreatingContract ? 'Creating...' : 'Create Contract' }}
+                </button>
+            </div>
+        </div>
+    </div>
+
   </div>
 </template>
 
@@ -637,12 +887,16 @@ onMounted(async () => {
 .content-animate { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+/* Menu Backdrop */
+.menu-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 90; background: transparent; }
+
 /* Nav */
 .nav-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
 .btn-back { background: white; border: 1px solid #e5e7eb; padding: 8px 16px; border-radius: 8px; color: #4b5563; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .btn-back:hover { background: #f9fafb; color: #111827; }
 .actions-group { display: flex; gap: 10px; }
 .btn-primary { background: #0ea5e9; color: white; border: none; padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
 .btn-secondary { background: white; border: 1px solid #d1d5db; color: #4b5563; padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 
 /* Cards & Header */
@@ -709,32 +963,11 @@ onMounted(async () => {
 .member-actions { display: flex; align-items: center; justify-content: flex-end; min-width: 180px; }
 
 /* Manage Buttons (ALWAYS VISIBLE & COLORED) */
-.manage-buttons { 
-    display: flex; 
-    gap: 6px; 
-    margin-left: 12px; 
-}
-
-.action-trigger { 
-    background: transparent; 
-    border: none; 
-    cursor: pointer; 
-    font-size: 1.1rem; 
-    padding: 6px; 
-    border-radius: 6px; 
-    transition: background 0.2s, color 0.2s; 
-    line-height: 1; 
-    /* Default visible color */
-    color: #64748b; 
-    background-color: #f1f5f9; 
-}
-.action-trigger:hover { 
-    color: #334155; 
-    background-color: #e2e8f0; 
-}
+.manage-buttons { display: flex; gap: 6px; margin-left: 12px; }
+.action-trigger { background: transparent; border: none; cursor: pointer; font-size: 1.1rem; padding: 6px; border-radius: 6px; transition: background 0.2s, color 0.2s; line-height: 1; color: #64748b; background-color: #f1f5f9; }
+.action-trigger:hover { color: #334155; background-color: #e2e8f0; }
 .edit-trigger { color: #0284c7; background-color: #e0f2fe; }
 .edit-trigger:hover { background-color: #bae6fd; }
-
 .kick-trigger { color: #dc2626; background-color: #fee2e2; }
 .kick-trigger:hover { background-color: #fecaca; }
 
@@ -776,6 +1009,46 @@ onMounted(async () => {
 .widget-wrapper { background: white; flex: 1; position: relative; min-height: 250px; }
 .match-widget-iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
 
+/* Contracts */
+.contracts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 15px; }
+.contract-card { display: flex; flex-direction: column; padding: 15px; gap: 15px; position: relative; }
+.contract-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
+.contract-details { display: flex; flex-direction: column; gap: 8px; }
+.detail-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: #4b5563; }
+.detail-label { font-weight: 500; color: #6b7280; }
+.detail-value { font-weight: 600; color: #1f2937; }
+.highlight-value { color: #0ea5e9; font-weight: 700; }
+.pagination-controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 25px; }
+.pagination-btn { padding: 6px 14px; font-size: 0.9rem; }
+.page-info { font-weight: 600; color: #6b7280; }
+.actions-header { margin-bottom: 15px; display: flex; justify-content: flex-end; }
+
+/* Contract Menu */
+.card-menu { position: absolute; top: 10px; right: 10px; z-index: 100; }
+.menu-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #9ca3af; padding: 0 5px; line-height: 1; border-radius: 4px; }
+.menu-btn:hover { background-color: #f3f4f6; color: #374151; }
+.menu-dropdown { position: absolute; top: 100%; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 160px; overflow: hidden; animation: fadeIn 0.1s; }
+.menu-item { display: block; width: 100%; text-align: left; padding: 10px 15px; background: none; border: none; font-size: 0.9rem; cursor: pointer; color: #374151; }
+.menu-item:hover { background-color: #f9fafb; }
+.menu-item-danger { color: #dc2626; }
+.menu-item-danger:hover { background-color: #fef2f2; }
+
+/* Modal */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.2s; }
+.modal-card { background: white; padding: 25px; border-radius: 12px; width: 500px; max-width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: slideUp 0.3s; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 1.25rem; }
+.close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280; }
+.modal-body { display: flex; flex-direction: column; gap: 15px; }
+.input-group { display: flex; gap: 10px; }
+.currency-select { width: 100px; }
+.form-row { display: flex; gap: 15px; }
+.form-row .form-group { flex: 1; }
+.modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+
 /* States */
 .state-box { padding: 60px; text-align: center; color: #9ca3af; background: white; border-radius: 16px; border: 1px dashed #e5e7eb; margin: 40px; }
 .clickable-card { cursor: pointer; transition: transform 0.2s; }
@@ -794,5 +1067,5 @@ onMounted(async () => {
 .role-player { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
 
 @media (max-width: 900px) { .grid-layout { grid-template-columns: 1fr; } .requests-grid { grid-template-columns: 1fr; } }
-@media (max-width: 600px) { .page-container { padding: 15px; } .nav-header { flex-direction: column; align-items: stretch; gap: 10px; } .actions-group { width: 100%; justify-content: space-between; } .btn-primary, .btn-secondary, .btn-back { width: 100%; justify-content: center; } .cover-image { height: 180px; } .avatar-container { margin-top: -50px; width: 100px; height: 100px; } .club-title { font-size: 1.8rem; } .header-content { padding: 0 20px 20px; align-items: center; text-align: center; } .title-container { text-align: center; } .badges-row { justify-content: center; } .member-card { flex-direction: column; align-items: stretch; gap: 10px; } .member-actions { justify-content: space-between; width: 100%; min-width: 0; } .manage-buttons { margin-left: auto; } .req-actions { flex-direction: column; margin-top: 15px; width: 100%; align-items: stretch; } .request-card { flex-direction: column; align-items: flex-start; } .req-avatar { margin-bottom: 10px; } .req-info { width: 100%; } }
+@media (max-width: 600px) { .page-container { padding: 15px; } .nav-header { flex-direction: column; align-items: stretch; gap: 10px; } .actions-group { width: 100%; justify-content: space-between; } .btn-primary, .btn-secondary, .btn-back { width: 100%; justify-content: center; } .cover-image { height: 180px; } .avatar-container { margin-top: -50px; width: 100px; height: 100px; } .club-title { font-size: 1.8rem; } .header-content { padding: 0 20px 20px; align-items: center; text-align: center; } .title-container { text-align: center; } .badges-row { justify-content: center; } .member-card { flex-direction: column; align-items: stretch; gap: 10px; } .member-actions { justify-content: space-between; width: 100%; min-width: 0; } .manage-buttons { margin-left: auto; } .req-actions { flex-direction: column; margin-top: 15px; width: 100%; align-items: stretch; } .request-card { flex-direction: column; align-items: flex-start; } .req-avatar { margin-bottom: 10px; } .req-info { width: 100%; } .contracts-grid { grid-template-columns: 1fr; } }
 </style>

@@ -13,6 +13,7 @@ import ClubsView from '@/views/clubs/ClubsView.vue';
 import ClubDetailsView from '@/views/clubs/ClubDetailsView.vue';
 import NotificationDetailsView from '@/views/notifications/NotificationDetailsView.vue';
 import UserContractsView from '@/modules/contracts/components/UserContracts.vue';
+import ContractDetailsView from '@/modules/contracts/components/ContractDetailsView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -61,6 +62,11 @@ const router = createRouter({
           path: '/app/contracts',
           name: 'contracts',
           component: UserContractsView
+        },
+        {
+          path: '/app/contracts/:id',
+          name: 'ContractDetails',
+          component: ContractDetailsView
         },
         {
           path: '/app/profile/me',
