@@ -26,28 +26,32 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    async checkAuth() {
-      if (this.isLoading) return;
+    async checkAuth(runInBackground = false) {
+      if (this.isLoading && !runInBackground) return;
 
-      this.isLoading = true;
+      if (!runInBackground) {
+        this.isLoading = true;
+      }
+
       try {
         const response = await api.get('/api/user/me');
         
         this.user = response.data;
-        console.log('Authenticated user:', this.user);
         this.isAuthenticated = true;
       } catch (error) {
         this.user = null;
         this.isAuthenticated = false;
 
-        router.push('/login');
+        router.push('/login'); 
       } finally {
-        this.isLoading = false;
+        if (!runInBackground) {
+          this.isLoading = false;
+        }
       }
     },
 
     async loginSuccess() {
-      await this.checkAuth();
+      await this.checkAuth(false);
     },
 
     async logout() {
@@ -56,8 +60,11 @@ export const useAuthStore = defineStore('auth', {
       } catch (error) {
         console.error('Error while logging out', error);
       } finally {
-        this.checkAuth();
+        this.user = null;
+        this.isAuthenticated = false;
+
         this.$reset(); 
+        router.push('/login');
       }
     }
   }

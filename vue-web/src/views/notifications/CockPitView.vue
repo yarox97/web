@@ -40,6 +40,7 @@
             </div>
           </div>
         </div>
+        
         <div class="pagination-footer">
           <button class="page-btn" @click="changePage(pagination.pageNumber - 1)" :disabled="pagination.pageNumber === 1 || loading">←</button>
           <span class="page-info">Page {{ pagination.pageNumber }}</span>
@@ -61,42 +62,18 @@
             
             <p class="full-text">{{ selectedNotification.text }}</p>
             
-            <div v-if="currentPayload" class="dynamic-actions-area">
-              
-              <div v-if="selectedNotification.notificationCategory === 'ClubJoinRequest'" class="action-block">
-                <div class="info-row">
-                  <strong>Candidate:</strong> {{ currentPayload.SenderName }} {{ currentPayload.SenderSurname }}
-                </div>
-                <div class="info-row">
-                  <strong>Club:</strong> {{ currentPayload.ClubName }}
-                </div>
-                <button class="action-btn btn-primary" @click="goToClubRequests(currentPayload.ClubId)">
-                  Manage Join Requests
-                </button>
-              </div>
-
-              <div v-else-if="selectedNotification.notificationCategory === 'ClubJoinApproved'" class="action-block success-block">
-                <p>Congratulations! You are now a member of <strong>{{ currentPayload.ClubName }}</strong>.</p>
-                <button class="action-btn btn-success" @click="goToClub(currentPayload.ClubId)">
-                  Go to Club Page
-                </button>
-              </div>
-
-              <div v-else-if="selectedNotification.notificationCategory === 'ClubJoinRejected'" class="action-block error-block">
-                 <p>Unfortunately, your request to join <strong>{{ currentPayload.ClubName }}</strong> was declined.</p>
-                 <button class="action-btn btn-outline" @click="goToAllClubs">
-                  Find other clubs
-                </button>
-              </div>
-
+            <div v-if="currentPayload && currentPayloadComponent" class="dynamic-actions-area">
+              <component 
+                :is="currentPayloadComponent" 
+                :payload="currentPayload" 
+              />
             </div>
 
+            <div v-if="selectedNotification.linkedURL && !currentPayload" class="detail-actions">
+              <a :href="selectedNotification.linkedURL" target="_blank" class="btn btn-primary">
+                Follow link
+              </a>
             </div>
-
-          <div v-if="selectedNotification.linkedURL && !currentPayload" class="detail-actions">
-            <a :href="selectedNotification.linkedURL" target="_blank" class="btn-primary">
-              Follow link
-            </a>
           </div>
         </div>
         
@@ -110,17 +87,35 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore} from '@/stores/authStore'
 import api from '@/services/api'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { formatDate } from '@/utils/dateFormater'
 
+// --- ИМПОРТ НОВЫХ КОМПОНЕНТОВ ---
+import ClubJoinRequest from '@/modules/notifications/ClubJoinRequest.vue'
+import ClubJoinApproved from '@/modules/notifications/ClubJoinApproved.vue'
+import ClubJoinRejected from '@/modules/notifications/ClubJoinRejected.vue'
+import ContractAssigned from '@/modules/notifications/ContractAssigned.vue'
+import KickedFromClubByClub from '@/modules/notifications/KickedFromClubByClub.vue'
+
 const router = useRouter()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 
+// --- СЛОВАРЬ КОМПОНЕНТОВ ---
+const notificationComponents = {
+  'ClubJoinRequest': ClubJoinRequest,
+  'ClubJoinApproved': ClubJoinApproved,
+  'ClubJoinRejected': ClubJoinRejected,
+  'ContractAssigned': ContractAssigned,
+  'KickedFromClubByClub': KickedFromClubByClub
+  // Добавьте новые типы сюда
+}
+
+// --- STATE ---
 const notifications = ref([])
 const loading = ref(false)
 const selectedNotification = ref(null)
@@ -131,6 +126,7 @@ const pagination = ref({
   totalPages: 1 
 })
 
+// --- COMPUTED ---
 const currentPayload = computed(() => {
   if (!selectedNotification.value || !selectedNotification.value.payload) {
     return null;
@@ -143,21 +139,18 @@ const currentPayload = computed(() => {
   }
 })
 
-const goToClubRequests = (clubId) => {
-  router.push({ name: 'ClubManage', params: { id: clubId }, query: { tab: 'requests' } })
-}
-
-const goToClub = (clubId) => {
-  router.push({ name: 'Club', params: { id: clubId } })
-}
-
-const goToAllClubs = () => {
-  router.push('clubs')
-}
+// Вычисляем, какой компонент рендерить
+const currentPayloadComponent = computed(() => {
+  if (!selectedNotification.value) return null
+  const category = selectedNotification.value.notificationCategory
+  return notificationComponents[category] || null
+})
 
 const unreadCount = computed(() => {
   return notifications.value.filter(n => !n.isChecked).length
 })
+
+// --- METHODS ---
 
 const handleNotificationClick = async (notification) => {
   const isMobile = window.innerWidth < 768
@@ -175,7 +168,6 @@ const handleNotificationClick = async (notification) => {
   }
 
   if (isMobile) {
-    // На мобилке нужно передать ID и там тоже сделать парсинг
     router.push({ name: 'NotificationDetails', params: { id: notification.id } })
   } else {
     selectedNotification.value = notification
@@ -183,7 +175,6 @@ const handleNotificationClick = async (notification) => {
 }
 
 const deleteNotification = async (id) => {
-  if (!confirm('Are you sure?')) return;
   try {
     await api.delete(`/api/notification/user/notifications/${id}`)
 
@@ -227,23 +218,37 @@ onMounted(async () => {
   loadNotifications();
 })
 
+const categoryLabels = {
+  'ClubJoinRequest': 'Join Request',       
+  'ClubJoinApproved': 'Approved',          
+  'ClubJoinRejected': 'Declined',          
+  'ContractAssigned': 'New Contract',     
+  'KickedFromClubByClub': 'Membership Revoked', 
+  'Informative': 'Info',
+  'Alert': 'System Alert'
+}
+
 const formatCategory = (cat) => {
   if (!cat) return '';
+  
+  if (categoryLabels[cat]) {
+    return categoryLabels[cat];
+  }
+
   return cat.replace(/([A-Z])/g, ' $1').trim(); 
 }
 
 const getCategoryClass = (cat) => {
-  if (cat === 'ClubJoinRequest') return 'badge-blue';
-  if (cat === 'ClubJoinRejected') return 'badge-red';
-  if (cat === 'ClubJoinApproved') return 'badge-green';
-  
-  if (cat === 'Informative') return 'badge-blue'
-  if (cat === 'Alert') return 'badge-red'
+  if (['ClubJoinRequest', 'Informative'].includes(cat)) return 'badge-blue';
+  if (['ClubJoinRejected', 'Alert', 'KickedFromClubByClub'].includes(cat)) return 'badge-red';
+  if (['ClubJoinApproved'].includes(cat)) return 'badge-green';
+  if (['ContractAssigned'].includes(cat)) return 'badge-purple';
   return 'badge-gray'
 }
 </script>
 
 <style scoped>
+/* --- ОСНОВНАЯ РАЗМЕТКА (ОСТАЛАСЬ ПРЕЖНЕЙ) --- */
 .home-wrapper {
   padding: 20px;
   height: 92vh; 
@@ -306,7 +311,7 @@ const getCategoryClass = (cat) => {
 
 .notification-card {
   min-height: 10%;
-  padding: 12px 16px; /* Немного уменьшил вертикальные отступы */
+  padding: 12px 16px;
   border-bottom: 1px solid #eee;
   cursor: pointer;
   border-left: 4px solid transparent;
@@ -317,9 +322,6 @@ const getCategoryClass = (cat) => {
 .notification-card:not(.is-read) { background-color: #f0f7ff; border-left-color: #007bff; }
 .notification-card.is-active { background-color: #e3f2fd; border-left-color: #1976d2; }
 
-/* --- ИЗМЕНЕНИЯ В СТИЛЯХ КАРТОЧКИ --- */
-
-/* Добавил флекс для хедера карточки, чтобы выровнять элементы */
 .card-header {
   display: flex;
   align-items: center;
@@ -327,7 +329,6 @@ const getCategoryClass = (cat) => {
   margin-bottom: 8px;
 }
 
-/* Группируем бейдж и дату слева */
 .header-left {
   display: flex;
   align-items: center;
@@ -339,20 +340,19 @@ const getCategoryClass = (cat) => {
   color: #999;
 }
 
-/* Новые стили для кнопки удаления */
 .delete-notification {
   background: transparent;
   border: none;
   cursor: pointer;
   padding: 6px;
   border-radius: 50%;
-  color: #9ca3af; /* Светло-серый по умолчанию */
+  color: #9ca3af;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  margin-left: auto; /* Прижимает кнопку вправо */
-  margin-right: -8px; /* Компенсация padding-right родителя для визуального выравнивания */
+  margin-left: auto;
+  margin-right: -8px;
 }
 
 .delete-notification svg {
@@ -361,17 +361,16 @@ const getCategoryClass = (cat) => {
 }
 
 .delete-notification:hover {
-  background-color: #fee2e2; /* Светло-красный фон при наведении */
-  color: #ef4444; /* Красная иконка при наведении */
+  background-color: #fee2e2;
+  color: #ef4444;
 }
-
-/* ---------------------------------- */
 
 .category-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; }
 .badge-blue { background: #e3f2fd; color: #1565c0; }
 .badge-red { background: #ffebee; color: #c62828; }
 .badge-green { background: #e8f5e9; color: #2e7d32; }
 .badge-gray { background: #f5f5f5; color: #616161; }
+.badge-purple { background: #f3e8ff; color: #7e22ce; } /* New */
 
 .text-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; color: #333;}
 
@@ -394,57 +393,87 @@ const getCategoryClass = (cat) => {
 .detail-header h2 { margin: 0; }
 
 .full-text { font-size: 16px; line-height: 1.6; color: #333; }
-.payload-box { background: #f5f5f5; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; overflow-x: auto; }
-.btn-primary { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }
 .empty-selection { display: flex; align-items: center; justify-content: center; height: 100%; color: #999; }
+.dynamic-actions-area { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
 
-.category-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-bottom: 8px; display: inline-block; }
-.badge-blue { background: #e3f2fd; color: #1565c0; }
-.badge-red { background: #ffebee; color: #c62828; }
-.badge-green { background: #e8f5e9; color: #2e7d32; }
-.badge-gray { background: #f5f5f5; color: #616161; }
-
-/* НОВЫЕ СТИЛИ ДЛЯ БЛОКОВ ДЕЙСТВИЙ */
-.dynamic-actions-area {
-  margin-top: 20px;
-  border-top: 1px solid #eee;
-  padding-top: 20px;
-}
-
-.action-block {
-  background-color: #f8f9fa;
-  padding: 20px;
+:deep(.notification-body) {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
   border-radius: 12px;
-  border: 1px solid #eee;
+  border: 1px solid transparent;
+  background: #fff;
+  transition: all 0.2s;
 }
 
-.success-block { background-color: #f1f8e9; border-color: #c5e1a5; }
-.error-block { background-color: #ffebee; border-color: #ffcdd2; }
-
-.info-row {
-  margin-bottom: 10px;
-  color: #555;
+:deep(.icon-area) {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+:deep(.icon-area svg) {
+  width: 20px;
+  height: 20px;
 }
 
-.action-btn {
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
+:deep(.content-area) { flex: 1; }
+:deep(.title) {
+  margin: 0 0 4px 0;
+  font-size: 16px;
   font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.1s;
-  width: 100%; 
+  color: #1f2937;
 }
+:deep(.description) {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+:deep(.highlight) { font-weight: 600; color: #111; }
+:deep(.meta-info) { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
 
-.action-btn:active { transform: scale(0.98); }
-.btn-primary { background: #007bff; color: white; }
-.btn-success { background: #4caf50; color: white; }
-.btn-outline { background: transparent; border: 1px solid #ccc; color: #333; }
-.btn-primary:hover { background: #0056b3; }
+:deep(.actions) { display: flex; gap: 10px; flex-wrap: wrap; }
+:deep(.btn) {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+:deep(.btn:hover) { opacity: 0.9; }
+
+:deep(.request-theme) { background-color: #f0f9ff; border-color: #bae6fd; }
+:deep(.request-theme .icon-area) { background-color: #e0f2fe; color: #0284c7; }
+:deep(.btn-primary) { background-color: #0284c7; color: white; }
+
+:deep(.success-theme) { background-color: #f0fdf4; border-color: #bbf7d0; }
+:deep(.success-theme .icon-area) { background-color: #dcfce7; color: #16a34a; }
+:deep(.btn-success) { background-color: #16a34a; color: white; }
+
+:deep(.error-theme) { background-color: #fef2f2; border-color: #fecaca; }
+:deep(.error-theme .icon-area) { background-color: #fee2e2; color: #dc2626; }
+:deep(.btn-outline-danger) { background: transparent; border: 1px solid #dc2626; color: #dc2626; }
+:deep(.btn-outline-danger:hover) { background: #dc2626; color: white; opacity: 1; }
+
+:deep(.contract-theme) { background-color: #faf5ff; border-color: #e9d5ff; }
+:deep(.contract-theme .icon-area) { background-color: #f3e8ff; color: #9333ea; }
+:deep(.btn-purple) { background-color: #9333ea; color: white; }
+
+:deep(.warning-theme) { background-color: #fff7ed; border-color: #ffedd5; }
+:deep(.warning-theme .icon-area) { background-color: #ffedd5; color: #ea580c; }
+:deep(.btn-outline-warning) { background: transparent; border: 1px solid #ea580c; color: #ea580c; }
+:deep(.btn-outline-warning:hover) { background: #ea580c; color: white; opacity: 1; }
 
 @media (min-width: 768px) {
   .home-grid { grid-template-columns: 400px 1fr; }
   .desktop-only { display: block; }
-  .action-btn { width: auto; }
 }
 </style>

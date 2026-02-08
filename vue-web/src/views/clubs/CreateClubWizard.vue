@@ -87,8 +87,8 @@ const submitForm = async () => {
   try {
     const data = await clubService.createClub(payload);
     
-    if (data && (data.isSuccess || data.value)) {
-      router.push({ name: 'Clubs' });
+    if (data) {
+      router.push({ name: 'clubs' });
     } else {
         console.error(data);
     }
@@ -98,6 +98,7 @@ const submitForm = async () => {
     isSubmitting.value = false;
   }
 };
+
 </script>
 
 <template>

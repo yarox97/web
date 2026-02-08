@@ -3,14 +3,16 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'; 
 
 import MainLayout from '@/layouts/MainLayout.vue' 
-import LandingView from '../views/LandingView.vue'
+import LandingView from '../views/landing/LandingView.vue'
 import LoginView from '../views/identity/LoginView.vue'
 import RegisterView from '../views/identity/RegisterView.vue'
-import CockPitView from '../views/CockPitView.vue'
+import CockPitView from '../views/notifications/CockPitView.vue'
 import ProfileView from '@/views/ProfileView.vue';
 import ErrorView from '../views/error-handling/ErrorView.vue'
 import ClubsView from '@/views/clubs/ClubsView.vue';
 import ClubDetailsView from '@/views/clubs/ClubDetailsView.vue';
+import NotificationDetailsView from '@/views/notifications/NotificationDetailsView.vue';
+import UserContractsView from '@/modules/contracts/components/UserContracts.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -38,7 +40,7 @@ const router = createRouter({
     {
       path: '/app/clubs/create',
       name: 'CreateClub',
-      component: () => import('@/views/CreateClubWizard.vue'),
+      component: () => import('@/views/clubs/CreateClubWizard.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -49,6 +51,16 @@ const router = createRouter({
           path: 'cockpit', 
           name: 'cockpit',
           component: CockPitView
+        },
+        {
+          path: '/notifications/:id',
+          name: 'NotificationDetails',
+          component: NotificationDetailsView
+        },
+        {
+          path: '/app/contracts',
+          name: 'contracts',
+          component: UserContractsView
         },
         {
           path: '/app/profile/me',

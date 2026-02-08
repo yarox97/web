@@ -16,14 +16,33 @@ const loading = ref(true)
 const error = ref(null)
 const clubId = route.params.id
 
+// --- Role Hierarchy Configuration ---
+const availableRoles = ['President', 'Coach', 'Staff', 'Player']
+
+const roleWeights = {
+    'Creator': 100,
+    'President': 90,
+    'Coach': 50,
+    'Staff': 40,
+    'Player': 10,
+    'Member': 0
+}
+
 // --- State ---
 const activeTab = ref('overview')
 const isEditing = ref(false)
 const editForm = ref({})
 const isSaving = ref(false)
+const imageLoadError = ref(false)
+
+// Requests State
 const requests = ref([])
 const loadingRequests = ref(false)
 const requestFilter = ref('Pending')
+
+// Members State
+const members = ref([])
+const loadingMembers = ref(false)
 
 // --- Permissions ---
 const myClubRole = computed(() => {
@@ -34,14 +53,49 @@ const myClubRole = computed(() => {
 });
 
 const canEdit = computed(() => ['President', 'Creator'].includes(myClubRole.value));
+const canViewMembers = computed(() => !!myClubRole.value);
 const canViewRequests = computed(() => ['President', 'Creator', 'Coach'].includes(myClubRole.value));
 
-// --- API ---
+// Helper: Get weight of a role string
+const getRoleWeight = (roleName) => {
+    return roleWeights[roleName] || 0;
+}
+
+// --- SORTED MEMBERS LOGIC ---
+const sortedMembers = computed(() => {
+  return [...members.value].sort((a, b) => {
+    const myId = authStore.user?.id;
+
+    // 1. Current user always on top
+    if (a.userId === myId) return -1;
+    if (b.userId === myId) return 1;
+
+    // 2. Sort by Role Weight (Descending)
+    const weightA = getRoleWeight(a.role);
+    const weightB = getRoleWeight(b.role);
+    
+    if (weightB !== weightA) {
+        return weightB - weightA;
+    }
+
+    // 3. Tie-breaker: Alphabetical by name
+    return (a.fullName || '').localeCompare(b.fullName || '');
+  });
+});
+
+// Helper: Return roles that I am allowed to assign
+const getAllowedRoles = () => {
+    const myWeight = getRoleWeight(myClubRole.value);
+    return availableRoles.filter(r => getRoleWeight(r) < myWeight);
+}
+
+// --- API: Club Details ---
 const fetchClub = async () => {
   loading.value = true
   try {
     const response = await api.get(`/api/club/${clubId}`)
     club.value = response.data
+    imageLoadError.value = false 
   } catch (err) {
     console.error(err)
     error.value = "Failed to load club details."
@@ -64,19 +118,51 @@ const startEdit = () => {
 const cancelEdit = () => {
   isEditing.value = false
   editForm.value = {}
+  imageLoadError.value = false
 }
 
 const saveClub = async () => {
   isSaving.value = true
   try {
-    await api.put(`/api/club/${clubId}`, editForm.value)
+    await api.put(`/api/club/${clubId}`, editForm.value, {
+        headers: { 'Content-Type': 'application/json' }
+    })
     club.value = { ...club.value, ...editForm.value }
     isEditing.value = false
-    await authStore.checkAuth()
+    imageLoadError.value = false
+    await authStore.checkAuth(true)
   } catch (e) {
+    console.error("Update failed", e)
     alert("Failed to update club details")
   } finally {
     isSaving.value = false
+  }
+}
+
+// --- API: Members Logic ---
+const fetchMembers = async () => {
+  loadingMembers.value = true
+  try {
+    const response = await api.get(`/api/${clubId}/members`)
+    
+    members.value = response.data.map(m => {
+        const u = m.user || m.User || m; 
+        return {
+            userId: m.userId || m.UserId || u.id || u.Id,
+            userName: m.userName || m.UserName || u.userName || u.UserName || 'Unknown',
+            fullName: `${m.userFirstName || m.UserFirstName || u.firstName || u.FirstName || ''} ${m.userSurname || m.UserSurname || u.lastName || u.LastName || ''}`.trim(),
+            avatarUrl: m.avatarUrl || m.AvatarUrl || u.avatarUrl || u.AvatarUrl,
+            role: m.role || m.Role || 'Member',
+            joinDate: m.joinDate || m.JoinDate || m.createdAt,
+            isEditing: false, 
+            kickConfirm: false,
+            tempRole: m.role || m.Role || 'Member'
+        };
+    })
+  } catch (e) {
+    console.error("Failed to fetch members", e)
+  } finally {
+    loadingMembers.value = false
   }
 }
 
@@ -85,17 +171,18 @@ const fetchRequests = async () => {
   try {
     const response = await api.get(`/api/joinClubRequests/${clubId}`)
     requests.value = response.data.map(req => {
-      const user = req.requestor || {}; 
-      return {
-        id: req.JoinClubRequestId || req.joinClubRequestId, 
-        userName: user.UserName || user.userName || 'Unknown',
-        firstName: user.FirstName || user.firstName || '',
-        lastName: user.LastName || user.lastName || '',
-        email: user.Email || user.email || '',
-        userAvatar: user.AvatarUrl || user.avatarUrl, 
-        status: req.joinClubRequestStatus || 'Pending',
-        createdAt: req.createdAt
-      }
+        const user = req.requestor || req.Requestor || req.user || req.User || {}; 
+        return {
+            id: req.JoinClubRequestId || req.joinClubRequestId || req.id, 
+            userName: user.UserName || user.userName || 'Unknown',
+            firstName: user.FirstName || user.firstName || '',
+            lastName: user.LastName || user.lastName || '',
+            email: user.Email || user.email || '',
+            userAvatar: user.AvatarUrl || user.avatarUrl, 
+            status: req.joinClubRequestStatus || req.status || 'Pending',
+            createdAt: req.createdAt,
+            selectedRole: 'Player' 
+        }
     })
   } catch (e) {
     console.error("Failed to fetch requests", e)
@@ -104,84 +191,198 @@ const fetchRequests = async () => {
   }
 }
 
-const filteredRequests = computed(() => {
-  if (requestFilter.value === 'All') return requests.value
-  return requests.value.filter(r => r.status === requestFilter.value)
-})
-
-const handleRequest = async (requestId, action) => {
-  if (!confirm(`Are you sure you want to ${action} this request?`)) return
-  try {
-    await api.post(`/api/joinClubRequests/${requestId}/${action.toLowerCase()}`)
-    const reqIndex = requests.value.findIndex(r => r.id === requestId)
-    if (reqIndex !== -1) {
-      requests.value[reqIndex].status = action === 'Approve' ? 'Approved' : 'Rejected'
-    }
-  } catch (e) {
-    alert(`Failed to ${action} request`)
-  }
+const handleImageError = (event, userName) => {
+    event.target.src = getAvatar(userName || 'User');
 }
 
-// --- Helpers ---
+// --- Member Actions ---
+const startMemberEdit = (member) => {
+    member.kickConfirm = false;
+    member.tempRole = member.role;
+    member.isEditing = true;
+}
+
+const cancelMemberEdit = (member) => {
+    member.isEditing = false;
+    member.tempRole = member.role;
+}
+
+const saveMemberRole = async (member) => {
+    if (member.tempRole === member.role) {
+        member.isEditing = false;
+        return;
+    }
+    if (getRoleWeight(member.tempRole) >= getRoleWeight(myClubRole.value)) {
+        alert("You cannot assign a role equal to or higher than your own.");
+        return;
+    }
+
+    try {
+        await api.put(
+            `/api/${clubId}/members/${member.userId}/change-role`, 
+            JSON.stringify(member.tempRole), 
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        
+        member.role = member.tempRole;
+        member.isEditing = false;
+    } catch (e) {
+        console.error("Failed to update role", e);
+        // Полезно вывести детали ошибки в консоль, если они есть
+        if (e.response && e.response.data) {
+             console.log("Server error details:", e.response.data);
+        }
+        alert("Failed to update role.");
+    }
+}
+
+const askToKick = (member) => {
+    member.isEditing = false;
+    member.kickConfirm = true;
+}
+
+const cancelKick = (member) => {
+    member.kickConfirm = false;
+}
+
+const confirmKick = async (member) => {
+    try {
+        await api.delete(`/api/${clubId}/members/${member.userId}`);
+        members.value = members.value.filter(m => m.userId !== member.userId);
+    } catch (e) {
+        console.error("Failed to kick member", e);
+        alert("Failed to kick member.");
+        member.kickConfirm = false;
+    }
+}
+
+const canManageMember = (member) => {
+    if (!canEdit.value) return false;
+    if (authStore.user?.id === member.userId) return false;
+
+    const myWeight = getRoleWeight(myClubRole.value);
+    const targetWeight = getRoleWeight(member.role);
+
+    if (targetWeight >= myWeight) return false;
+
+    return true;
+}
+
+const filteredRequests = computed(() => {
+    if (requestFilter.value === 'All') return requests.value
+    return requests.value.filter(r => r.status === requestFilter.value)
+})
+
+const handleRequest = async (requestItem, action) => {
+    let requestBody = null;
+    if (action === 'Approve') {
+        if (!requestItem.selectedRole) {
+            alert("Please select a role.");
+            return;
+        }
+        requestBody = { role: requestItem.selectedRole };
+    } else {
+        if (!confirm(`Are you sure you want to REJECT this request?`)) return;
+    }
+
+    try {
+        await api.put(
+            `/api/joinClubRequests/${clubId}/requests/${requestItem.id}/${action.toLowerCase()}`, 
+            requestBody
+        )
+        const reqIndex = requests.value.findIndex(r => r.id === requestItem.id)
+        if (reqIndex !== -1) {
+            requests.value[reqIndex].status = action === 'Approve' ? 'Approved' : 'Rejected'
+        }
+        if (action === 'Approve' && activeTab.value === 'members') fetchMembers();
+    } catch (e) {
+        console.error(e);
+        alert(`Failed to ${action} request. Check console for details.`);
+    }
+}
+
 const getStatusClass = (status) => {
-  if (status === 'Pending') return 'status-pending'
-  if (status === 'Approved') return 'status-approved'
-  if (status === 'Rejected') return 'status-rejected'
-  return ''
+    if (status === 'Pending') return 'status-pending'
+    if (status === 'Approved') return 'status-approved'
+    if (status === 'Rejected') return 'status-rejected'
+    return ''
+}
+
+const getRoleBadgeClass = (role) => {
+    const r = (role || '').toLowerCase();
+    if (r === 'president' || r === 'creator') return 'role-admin';
+    if (r === 'coach') return 'role-coach';
+    if (r === 'staff') return 'role-staff';
+    return 'role-player';
 }
 
 const goToProfile = (userName) => {
-  if (!userName) return; 
-  router.push({ name: 'UserProfile', params: { username: userName } })
+    if (!userName) return; 
+    router.push({ name: 'UserProfile', params: { username: userName } })
 }
 
-watch(activeTab, (newTab) => {
-  if (newTab === 'requests' && canViewRequests.value) {
-    fetchRequests()
-  }
+const clubAvatar = computed(() => {
+    if (isEditing.value && editForm.value.avatarURL) return editForm.value.avatarURL;
+    if (imageLoadError.value) return getAvatar(club.value?.name || 'Club');
+    if (club.value?.avatarURL) return club.value.avatarURL;
+    return getAvatar(club.value?.name || 'Club');
 })
 
-const clubAvatar = computed(() => {
-  if (isEditing.value && editForm.value.avatarURL) return editForm.value.avatarURL
-  if (club.value?.avatarURL) return club.value.avatarURL
-  return getAvatar(club.value?.name)
-})
+const onAvatarError = () => { imageLoadError.value = true; }
 
 const coverStyle = computed(() => {
-  const url = isEditing.value ? editForm.value.backGroundURL : club.value?.backGroundURL
-  if (url) {
-    return { backgroundImage: `url(${url})` }
-  }
-  return { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }
+    const url = isEditing.value ? editForm.value.backGroundURL : club.value?.backGroundURL
+    if (url) {
+        return { backgroundImage: `url(${url})` }
+    }
+    return { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }
 })
 
 const volleyboxWidgetSrc = computed(() => {
-  const id = club.value?.volleyBoxUrl || club.value?.VolleyBoxUrl;
-  if (!id) return null;
-  return `https://volleybox.net/widget/soonest_match/${id}`;
+    const id = club.value?.volleyBoxUrl || club.value?.VolleyBoxUrl;
+    if (!id) return null;
+    return `https://volleybox.net/widget/soonest_match/${id}`;
 })
 
 const copyCode = () => {
-  if(club.value?.joinCode) {
-    navigator.clipboard.writeText(club.value.joinCode)
-    alert('Invite code copied to clipboard!')
-  }
+    if(club.value?.joinCode) {
+        navigator.clipboard.writeText(club.value.joinCode)
+        alert('Invite code copied to clipboard!')
+    }
 }
 
 const goBack = () => router.back()
 
-onMounted(() => {
-  fetchClub()
+const goToClubs = () => router.push({ name: 'clubs' })
+
+// --- TAB SYNCHRONIZATION LOGIC ---
+const checkTabParam = () => {
+    const tabParam = route.query.tab
+    if (tabParam && ['overview', 'members', 'requests'].includes(tabParam)) {
+        activeTab.value = tabParam
+    }
+}
+
+watch(activeTab, (newTab) => {
+    if (newTab === 'requests' && canViewRequests.value) fetchRequests()
+    if (newTab === 'members' && canViewMembers.value) fetchMembers()
+})
+
+watch(() => route.query.tab, (newTab) => {
+    if (newTab && ['overview', 'members', 'requests'].includes(newTab)) {
+        activeTab.value = newTab
+    }
+})
+
+onMounted(async () => {
+    await fetchClub()
+    checkTabParam()
 })
 </script>
 
 <template>
   <div class="page-container">
-    
-    <div v-if="loading" class="state-box">
-      <Spinner></Spinner>
-    </div>
-
+    <div v-if="loading" class="state-box"><Spinner></Spinner></div>
     <div v-else-if="error" class="state-box error">
       <div class="error-icon">⚠️</div>
       <p>{{ error }}</p>
@@ -191,19 +392,14 @@ onMounted(() => {
     <div v-else class="content-animate">
       
       <div class="nav-header">
-        <button class="btn-back" @click="goBack">
-          <span class="icon">←</span> Back to Clubs
-        </button>
-
+        <button class="btn-back" @click="goToClubs"><span class="icon">←</span> Back to Clubs</button>
         <div class="actions-group" v-if="canEdit">
           <template v-if="!isEditing">
             <button class="btn-primary" @click="startEdit">✎ Edit Club</button>
           </template>
           <template v-else>
             <button class="btn-secondary" @click="cancelEdit" :disabled="isSaving">Cancel</button>
-            <button class="btn-primary" @click="saveClub" :disabled="isSaving">
-              {{ isSaving ? 'Saving...' : 'Save Changes' }}
-            </button>
+            <button class="btn-primary" @click="saveClub" :disabled="isSaving">{{ isSaving ? 'Saving...' : 'Save Changes' }}</button>
           </template>
         </div>
       </div>
@@ -212,7 +408,7 @@ onMounted(() => {
         <div class="cover-image" :style="coverStyle"></div>
         <div class="header-content">
           <div class="avatar-container">
-            <img :src="clubAvatar" alt="Club Logo" class="avatar-img" />
+            <img :src="clubAvatar" alt="Club Logo" class="avatar-img" @error="onAvatarError" />
           </div>
           <div class="title-container">
             <template v-if="isEditing">
@@ -229,23 +425,21 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="tabs-bar" v-if="canViewRequests">
+      <div class="tabs-bar">
         <button class="tab-btn" :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'">Overview</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'requests' }" @click="activeTab = 'requests'">
+        <button v-if="canViewMembers" class="tab-btn" :class="{ active: activeTab === 'members' }" @click="activeTab = 'members'">Members</button>
+        <button v-if="canViewRequests" class="tab-btn" :class="{ active: activeTab === 'requests' }" @click="activeTab = 'requests'">
           Join Requests
           <span v-if="requests.some(r => r.status === 'Pending')" class="badge-dot"></span>
         </button>
       </div>
 
       <div v-if="activeTab === 'overview'" class="tab-content">
-        <div class="grid-layout">
+        <div class="grid-layout" :class="{ 'full-width': !volleyboxWidgetSrc || isEditing }">
           
           <div class="left-column">
-            
             <div v-if="club.joinCode && !isEditing" class="card invite-card">
-              <div class="invite-header">
-                <span class="card-label">Internal Access</span>
-              </div>
+              <div class="invite-header"><span class="card-label">Internal Access</span></div>
               <div class="code-box" @click="copyCode" title="Click to copy">
                 <div class="code-label">INVITE CODE</div>
                 <div class="code-value">{{ club.joinCode }}</div>
@@ -262,13 +456,37 @@ onMounted(() => {
 
             <div class="card info-card">
               <h3 class="section-title">About the Club</h3>
+              
               <template v-if="isEditing">
                 <textarea v-model="editForm.description" class="edit-textarea" rows="8"></textarea>
               </template>
+              
               <template v-else>
                 <div v-if="club.description" class="club-desc">{{ club.description }}</div>
-                <p v-else class="club-desc italic">No description provided.</p>
-                <div class="meta-row"><span class="meta-item">📅 Joined {{ formatDate(club.createdAt) }}</span></div>
+                <div v-else class="club-desc placeholder-text">
+                    <p>Welcome to <strong>{{ club.name }}</strong>!</p>
+                    <p>This club is part of our volleyball community. Stay tuned for updates and team announcements.</p>
+                </div>
+
+                <div class="club-highlights">
+                    <h4 class="highlights-title">Club Highlights</h4>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-icon">📅</span>
+                            <div class="stat-text">
+                                <span class="stat-label">Founded</span>
+                                <span class="stat-value">{{ formatDate(club.createdAt) }}</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">🔐</span>
+                            <div class="stat-text">
+                                <span class="stat-label">Status</span>
+                                <span class="stat-value">{{ club.joinCode ? 'Invite Only' : 'Open' }}</span>
+                            </div>
+                        </div>
+                        </div>
+                </div>
               </template>
             </div>
           </div>
@@ -280,6 +498,79 @@ onMounted(() => {
               <div class="vb-footer"><small>Powered by Volleybox</small></div>
             </div>
           </div>
+
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'members'" class="tab-content">
+        <div v-if="loadingMembers" class="state-box"><Spinner /></div>
+        <div v-else-if="members.length === 0" class="state-box">
+          <div class="empty-icon">👥</div>
+          <p>No members found.</p>
+        </div>
+
+        <div v-else class="members-list">
+             <div 
+                v-for="member in sortedMembers" 
+                :key="member.userId" 
+                class="card member-card" 
+                :class="{ 'editing-mode': member.isEditing, 'kick-mode': member.kickConfirm }"
+             >
+                <div class="member-main-content clickable-area" @click="goToProfile(member.userName)">
+                    <div class="req-avatar compact-avatar">
+                        <img 
+                            :src="member.avatarUrl || getAvatar(member.userName)" 
+                            alt="User" 
+                            @error="(e) => handleImageError(e, member.userName)"
+                        />
+                    </div>
+                    <div class="req-info">
+                        <h4 class="req-fullname">
+                            {{ member.fullName || member.userName }}
+                            <span v-if="authStore.user?.id === member.userId" class="me-badge">(You)</span>
+                        </h4>
+                        <div class="req-meta-row">
+                             <span class="req-username">@{{ member.userName }}</span>
+                             <span class="dot-separator">•</span>
+                             <span class="req-date">Joined {{ formatDate(member.joinDate) }}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="member-actions">
+                      <template v-if="member.kickConfirm">
+                         <div class="kick-confirmation-box">
+                            <span class="danger-text">Kick user?</span>
+                            <button class="btn-confirm-kick" @click.stop="confirmKick(member)">Yes</button>
+                            <button class="btn-cancel-kick" @click.stop="cancelKick(member)">Cancel</button>
+                         </div>
+                      </template>
+
+                      <template v-else-if="member.isEditing">
+                          <div class="edit-role-container" @click.stop>
+                              <select v-model="member.tempRole" class="role-select-styled">
+                                 <option 
+                                     v-for="role in getAllowedRoles()" 
+                                     :key="role" 
+                                     :value="role"
+                                 >
+                                     {{ role }}
+                                 </option>
+                              </select>
+                              <button class="btn-icon-action save" @click.stop="saveMemberRole(member)" title="Save">✓</button>
+                              <button class="btn-icon-action cancel" @click.stop="cancelMemberEdit(member)" title="Cancel">✕</button>
+                          </div>
+                      </template>
+
+                      <template v-else>
+                          <span class="role-badge" :class="getRoleBadgeClass(member.role)">{{ member.role }}</span>
+                          <div v-if="canManageMember(member)" class="manage-buttons">
+                              <button class="action-trigger edit-trigger" @click.stop="startMemberEdit(member)" title="Change Role">✎</button>
+                              <button class="action-trigger kick-trigger" @click.stop="askToKick(member)" title="Kick User">✕</button>
+                          </div>
+                      </template>
+                </div>
+             </div>
         </div>
       </div>
 
@@ -291,10 +582,7 @@ onMounted(() => {
            </button>
         </div>
 
-        <div v-if="loadingRequests" class="state-box">
-          <Spinner />
-        </div>
-
+        <div v-if="loadingRequests" class="state-box"><Spinner /></div>
         <div v-else-if="filteredRequests.length === 0" class="state-box">
           <div class="empty-icon">📭</div>
           <p>No {{ requestFilter !== 'All' ? requestFilter.toLowerCase() : '' }} requests found.</p>
@@ -303,7 +591,11 @@ onMounted(() => {
         <div v-else class="requests-grid">
           <div v-for="req in filteredRequests" :key="req.id" class="card request-card clickable-card" @click="goToProfile(req.userName)">
              <div class="req-avatar">
-                <img :src="req.userAvatar || getAvatar(req.userName)" alt="User" />
+                <img 
+                    :src="req.userAvatar || getAvatar(req.userName)" 
+                    alt="User"
+                    @error="(e) => handleImageError(e, req.userName)"
+                />
              </div>
              <div class="req-info">
                 <h4 class="req-fullname">
@@ -314,10 +606,18 @@ onMounted(() => {
                 <div v-if="req.email" class="req-email">✉️ {{ req.email }}</div>
                 <div class="req-meta">📅 {{ formatDate(req.createdAt) }}</div>
              </div>
+             
              <div class="req-actions">
                 <template v-if="req.status === 'Pending'">
-                  <button class="btn-action approve" @click.stop="handleRequest(req.id, 'Approve')">Approve</button>
-                  <button class="btn-action reject" @click.stop="handleRequest(req.id, 'Reject')">Reject</button>
+                  <div class="role-selector" @click.stop>
+                      <select v-model="req.selectedRole" class="role-select">
+                          <option v-for="role in getAllowedRoles()" :key="role" :value="role">{{ role }}</option>
+                      </select>
+                  </div>
+                  <div class="action-buttons-row">
+                      <button class="btn-action approve" @click.stop="handleRequest(req, 'Approve')">Approve</button>
+                      <button class="btn-action reject" @click.stop="handleRequest(req, 'Reject')">Reject</button>
+                  </div>
                 </template>
                 <template v-else>
                    <span class="status-badge" :class="getStatusClass(req.status)">{{ req.status }}</span>
@@ -332,182 +632,167 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* --- Global Container --- */
-.page-container {
-  width: 100%;
-  max-width: 2200px; /* Ограничиваем ширину на больших экранах */
-  margin: 0 auto;    /* Центрируем */
-  box-sizing: border-box;
-  padding: 20px;
-  font-family: 'Segoe UI', sans-serif;
-  color: #1f2937;
-}
-
+/* Page & Basics */
+.page-container { width: 100%; max-width: 2200px; margin: 0 auto; box-sizing: border-box; padding: 20px; font-family: 'Segoe UI', sans-serif; color: #1f2937; }
 .content-animate { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* --- Navigation --- */
-.nav-header { 
-  margin-bottom: 20px; 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
-  flex-wrap: wrap; 
-  gap: 15px; 
-}
-
-.btn-back {
-  background: white; border: 1px solid #e5e7eb; padding: 8px 16px; border-radius: 8px;
-  color: #4b5563; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;
-  transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
+/* Nav */
+.nav-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+.btn-back { background: white; border: 1px solid #e5e7eb; padding: 8px 16px; border-radius: 8px; color: #4b5563; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .btn-back:hover { background: #f9fafb; color: #111827; }
-
 .actions-group { display: flex; gap: 10px; }
 .btn-primary { background: #0ea5e9; color: white; border: none; padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 .btn-secondary { background: white; border: 1px solid #d1d5db; color: #4b5563; padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 
-/* --- Hero Card --- */
-.card {
-  background: white; border-radius: 16px; border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); overflow: hidden; margin-bottom: 24px;
-}
+/* Cards & Header */
+.card { background: white; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); overflow: hidden; margin-bottom: 6px; }
 .header-card { position: relative; }
-.cover-image { 
-  height: 250px; width: 100%; 
-  background-size: cover; background-position: center; 
-}
-.header-content {
-  padding: 0 30px 20px; position: relative; display: flex; flex-direction: column; align-items: flex-start;
-}
-.avatar-container {
-  margin-top: -60px; padding: 4px; background: white; border-radius: 24px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-.avatar-img { 
-  width: 120px; height: 120px; border-radius: 20px; object-fit: cover; 
-}
+.cover-image { height: 250px; width: 100%; background-size: cover; background-position: center; }
+.header-content { padding: 0 30px 20px; position: relative; display: flex; flex-direction: column; align-items: flex-start; }
+.avatar-container { margin-top: -60px; padding: 4px; background: white; border-radius: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 120px; height: 120px; display: flex; justify-content: center; align-items: center; }
+.avatar-img { width: 100%; height: 100%; border-radius: 20px; object-fit: cover; background-color: #f3f4f6; }
 .title-container { margin-top: 15px; width: 100%; }
 .club-title { margin: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: break-word; }
 .badges-row { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
 .since-badge { background: #f3f4f6; color: #6b7280; font-size: 0.85rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
 .role-badge-header { background: #e0f2fe; color: #0284c7; font-size: 0.85rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
 
-/* --- Tabs --- */
-.tabs-bar { 
-  display: flex; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; 
-  overflow-x: auto; /* Scroll on small screens */
-}
-.tab-btn {
-  background: none; border: none; padding: 10px 5px; font-size: 1rem; white-space: nowrap;
-  color: #6b7280; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; position: relative;
-}
+/* Tabs */
+.tabs-bar { display: flex; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; overflow-x: auto; }
+.tab-btn { background: none; border: none; padding: 10px 5px; font-size: 1rem; white-space: nowrap; color: #6b7280; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
 .tab-btn.active { color: #0ea5e9; border-bottom-color: #0ea5e9; }
 .badge-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; position: absolute; top: 8px; right: -5px; }
 
-/* --- Layout Grid --- */
-.grid-layout { 
-  display: grid; 
-  grid-template-columns: 1fr 350px; 
-  gap: 24px; 
-}
-.left-column, .right-column { display: flex; flex-direction: column; }
+/* Layouts */
+.grid-layout { display: grid; grid-template-columns: 1fr 350px; gap: 24px; transition: all 0.3s ease; }
+/* === NEW RULE: FULL WIDTH IF NO WIDGET === */
+.grid-layout.full-width { grid-template-columns: 1fr; }
 
-/* --- Content Cards --- */
+.left-column, .right-column { display: flex; flex-direction: column; }
 .info-card { flex: 1; padding: 25px; }
-.club-desc {
-  white-space: pre-line; /* IMPORTANT: Preserves newlines */
-  word-break: break-word; /* Prevent overflow */
-  font-size: 1rem;
-  line-height: 1.6;
-  color: #4b5563;
-}
+.club-desc { white-space: pre-line; word-break: break-word; font-size: 1rem; line-height: 1.6; color: #4b5563; }
+.placeholder-text { font-style: italic; color: #6b7280; }
+
+/* === NEW: Club Highlights Styling === */
+.club-highlights { margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 20px; }
+.highlights-title { font-size: 1rem; color: #374151; margin: 0 0 15px 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.stats-grid { display: flex; gap: 30px; flex-wrap: wrap; }
+.stat-item { display: flex; align-items: center; gap: 10px; }
+.stat-icon { font-size: 1.5rem; background: #f3f4f6; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+.stat-text { display: flex; flex-direction: column; }
+.stat-label { font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase; }
+.stat-value { font-size: 0.95rem; font-weight: 600; color: #111827; }
+
 .edit-card { padding: 25px; border-left: 4px solid #0ea5e9; }
 .section-title { font-size: 1.2rem; margin: 0 0 15px 0; color: #374151; }
 .meta-row { margin-top: 20px; padding-top: 15px; border-top: 1px solid #f3f4f6; color: #6b7280; font-size: 0.9rem; }
-
-/* --- Invite Code --- */
 .invite-card { background: linear-gradient(to right, #eff6ff, #ffffff); border-color: #bfdbfe; padding: 20px; }
-.code-box {
-  margin-top: 10px; background: white; border: 2px dashed #93c5fd; border-radius: 12px;
-  padding: 15px; display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer; transition: all 0.2s; flex-wrap: wrap; gap: 10px;
-}
+.code-box { margin-top: 10px; background: white; border: 2px dashed #93c5fd; border-radius: 12px; padding: 15px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; flex-wrap: wrap; gap: 10px; }
 .code-value { font-size: 1.5rem; font-weight: 800; color: #1e40af; font-family: monospace; word-break: break-all; }
-
-/* --- Forms --- */
 .form-group label { font-size: 0.9rem; font-weight: 600; display: block; margin-bottom: 5px; }
-.edit-input, .edit-textarea { 
-  width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; 
-  font-family: inherit; font-size: 1rem;
-}
+.edit-input, .edit-textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 1rem; }
 .title-input { font-size: 1.8rem; font-weight: 700; margin-bottom: 10px; }
 
-/* --- Requests --- */
-.filter-pills { 
-  display: flex; gap: 10px; margin-bottom: 20px; 
-  overflow-x: auto; padding-bottom: 5px; /* Horizontal scroll for mobile */
-}
-.pill { 
-  padding: 6px 16px; border-radius: 20px; border: 1px solid #e5e7eb; 
-  background: white; color: #6b7280; cursor: pointer; font-size: 0.9rem; white-space: nowrap; 
-}
-.pill.active { background: #0ea5e9; color: white; border-color: #0ea5e9; }
+/* Members List */
+.members-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.member-card { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; gap: 15px; transition: all 0.2s ease; border: 1px solid transparent; }
+.member-card:hover { border-color: #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+.member-card.editing-mode { background-color: #f0f9ff; border-color: #bae6fd; }
+.member-card.kick-mode { background-color: #fef2f2; border-color: #fecaca; }
+.member-main-content { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; }
+.compact-avatar img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.req-fullname { font-size: 1rem; margin: 0; line-height: 1.2; }
+.req-meta-row { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #6b7280; margin-top: 2px; }
+.dot-separator { font-size: 0.6rem; opacity: 0.5; }
+.me-badge { font-size: 0.75rem; color: #6b7280; font-weight: normal; background: #f3f4f6; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+.member-actions { display: flex; align-items: center; justify-content: flex-end; min-width: 180px; }
 
-.requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; }
+/* Manage Buttons (ALWAYS VISIBLE & COLORED) */
+.manage-buttons { 
+    display: flex; 
+    gap: 6px; 
+    margin-left: 12px; 
+}
+
+.action-trigger { 
+    background: transparent; 
+    border: none; 
+    cursor: pointer; 
+    font-size: 1.1rem; 
+    padding: 6px; 
+    border-radius: 6px; 
+    transition: background 0.2s, color 0.2s; 
+    line-height: 1; 
+    /* Default visible color */
+    color: #64748b; 
+    background-color: #f1f5f9; 
+}
+.action-trigger:hover { 
+    color: #334155; 
+    background-color: #e2e8f0; 
+}
+.edit-trigger { color: #0284c7; background-color: #e0f2fe; }
+.edit-trigger:hover { background-color: #bae6fd; }
+
+.kick-trigger { color: #dc2626; background-color: #fee2e2; }
+.kick-trigger:hover { background-color: #fecaca; }
+
+/* Edit & Actions */
+.edit-role-container { display: flex; align-items: center; gap: 8px; animation: fadeIn 0.2s; }
+.role-select-styled { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; background: white; outline: none; color: #334155; cursor: pointer; }
+.role-select-styled:focus { border-color: #0ea5e9; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.1); }
+.btn-icon-action { width: 30px; height: 30px; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: bold; color: white; transition: transform 0.1s; }
+.btn-icon-action:active { transform: scale(0.95); }
+.save { background-color: #22c55e; } .save:hover { background-color: #16a34a; }
+.cancel { background-color: #94a3b8; } .cancel:hover { background-color: #64748b; }
+.kick-confirmation-box { display: flex; align-items: center; gap: 10px; animation: slideInRight 0.2s; }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+.danger-text { color: #dc2626; font-weight: 600; font-size: 0.9rem; margin-right: 5px; }
+.btn-confirm-kick { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.btn-confirm-kick:hover { background: #b91c1c; }
+.btn-cancel-kick { background: white; border: 1px solid #d1d5db; color: #4b5563; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+.btn-cancel-kick:hover { background: #f3f4f6; }
+
+/* Requests Grid */
+.filter-pills { display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; }
+.pill { padding: 6px 16px; border-radius: 20px; border: 1px solid #e5e7eb; background: white; color: #6b7280; cursor: pointer; font-size: 0.9rem; white-space: nowrap; }
+.pill.active { background: #0ea5e9; color: white; border-color: #0ea5e9; }
+.requests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 15px; }
 .request-card { display: flex; align-items: center; padding: 15px; gap: 15px; }
 .req-avatar img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; }
 .req-info { flex: 1; min-width: 0; }
-.req-fullname { margin: 0; font-size: 1.05rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.req-username { font-size: 0.9rem; color: #6b7280; }
 .req-email { font-size: 0.85rem; color: #4b5563; word-break: break-all; }
-.req-actions { display: flex; gap: 8px; flex-direction: column; justify-content: center; }
+.req-meta { font-size: 0.85rem; color: #9ca3af; margin-top: 4px; }
+.req-actions { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 8px; min-width: 130px; }
+.role-selector { width: 100%; }
+.role-select { width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; color: #374151; background-color: #fff; cursor: pointer; }
+.role-select:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.1); }
+.action-buttons-row { display: flex; gap: 8px; width: 100%; }
 
-/* --- Widget --- */
+/* Widget */
 .vb-card { height: 100%; padding: 0; display: flex; flex-direction: column; border-top: 4px solid #ef4444; }
 .vb-header, .vb-footer { padding: 10px 20px; }
 .widget-wrapper { background: white; flex: 1; position: relative; min-height: 250px; }
 .match-widget-iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
 
-/* --- States --- */
+/* States */
 .state-box { padding: 60px; text-align: center; color: #9ca3af; background: white; border-radius: 16px; border: 1px dashed #e5e7eb; margin: 40px; }
 .clickable-card { cursor: pointer; transition: transform 0.2s; }
 .clickable-card:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); border-color: #93c5fd; }
-.btn-action { z-index: 2; position: relative; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; font-size: 0.85rem; }
-.approve { background: #dcfce7; color: #166534; }
-.approve:hover { background-color: #b0dfc0;}
-.reject { background: #fee2e2; color: #991b1b; }
-.reject:hover { background-color: #ddafaf;}
+.btn-action { flex: 1; padding: 8px 0; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; font-size: 0.85rem; text-align: center; }
+.approve { background: #dcfce7; color: #166534; } .approve:hover { background-color: #b0dfc0;}
+.reject { background: #fee2e2; color: #991b1b; } .reject:hover { background-color: #ddafaf;}
 .status-badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
 .status-pending { background: #fff7ed; color: #c2410c; }
 .status-approved { background: #f0fdf4; color: #15803d; }
 .status-rejected { background: #fef2f2; color: #b91c1c; }
+.role-badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; font-weight: 600; text-transform: capitalize; border: 1px solid transparent; }
+.role-admin { background: #eef2ff; color: #4f46e5; border-color: #c7d2fe; }
+.role-coach { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.role-staff { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.role-player { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
 
-/* --- MOBILE RESPONSIVENESS --- */
-@media (max-width: 900px) {
-  .grid-layout { grid-template-columns: 1fr; } /* Stack columns */
-  .requests-grid { grid-template-columns: 1fr; } /* Stack requests */
-}
-
-@media (max-width: 600px) {
-  .page-container { padding: 15px; }
-  
-  .nav-header { flex-direction: column; align-items: stretch; gap: 10px; }
-  .actions-group { width: 100%; justify-content: space-between; }
-  .btn-primary, .btn-secondary, .btn-back { width: 100%; justify-content: center; }
-
-  .cover-image { height: 180px; }
-  .avatar-img { width: 100px; height: 100px; }
-  .club-title { font-size: 1.8rem; }
-  
-  .header-content { padding: 0 20px 20px; align-items: center; text-align: center; }
-  .title-container { text-align: center; }
-  .badges-row { justify-content: center; }
-
-  .req-actions { flex-direction: row; margin-top: 10px; width: 100%; }
-  .btn-action { flex: 1; }
-  .request-card { flex-direction: column; align-items: flex-start; }
-  .req-avatar { margin-bottom: 10px; }
-  .req-info { width: 100%; }
-}
+@media (max-width: 900px) { .grid-layout { grid-template-columns: 1fr; } .requests-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .page-container { padding: 15px; } .nav-header { flex-direction: column; align-items: stretch; gap: 10px; } .actions-group { width: 100%; justify-content: space-between; } .btn-primary, .btn-secondary, .btn-back { width: 100%; justify-content: center; } .cover-image { height: 180px; } .avatar-container { margin-top: -50px; width: 100px; height: 100px; } .club-title { font-size: 1.8rem; } .header-content { padding: 0 20px 20px; align-items: center; text-align: center; } .title-container { text-align: center; } .badges-row { justify-content: center; } .member-card { flex-direction: column; align-items: stretch; gap: 10px; } .member-actions { justify-content: space-between; width: 100%; min-width: 0; } .manage-buttons { margin-left: auto; } .req-actions { flex-direction: column; margin-top: 15px; width: 100%; align-items: stretch; } .request-card { flex-direction: column; align-items: flex-start; } .req-avatar { margin-bottom: 10px; } .req-info { width: 100%; } }
 </style>

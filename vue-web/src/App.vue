@@ -1,11 +1,11 @@
-<script setup>
+ <script setup>
 import { onMounted } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
 import Spinner from './components/shared/Spinner.vue';
 
 const authStore = useAuthStore();
 
-</script>
+</script> 
 
 <template>
   <div v-if="authStore.isLoading" class="app-loading">
@@ -24,13 +24,12 @@ html, body {
   height: 100%;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f3f4f6; 
+  scroll-behavior: smooth;
 }
 
 #app {
   width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  min-height: 100vh;
 }
 
 *, *::before, *::after {
@@ -39,7 +38,7 @@ html, body {
 </style>
 
 <style scoped>
-.app-loading {
+ .app-loading {
   position: fixed;
   top: 0;
   left: 0;

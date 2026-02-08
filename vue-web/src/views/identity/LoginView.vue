@@ -6,22 +6,26 @@
 
     <form @submit.prevent="handleSubmit">
       <div class="field">
-        <label>Username</label>
         <input
           type="text"
+          id="username"
           v-model="userName"
           required
           pattern="[A-Za-z0-9]{3,}"
+          placeholder=" "
         />
+        <label for="username">Username</label>
       </div>
 
       <div class="field">
-        <label>Password</label>
         <input
           type="password"
+          id="password"
           v-model="password"
           required
+          placeholder=" "
         />
+        <label for="password">Password</label>
       </div>
 
       <div v-if="error" class="error-box">
@@ -40,19 +44,15 @@
   </div>
 </template>
 
-
-
 <script>
 import axios from "axios";
 import { useAuthStore } from "@/stores/authStore";
 export default {
   name: "LoginView",
-
   setup() {
     const authStore = useAuthStore();
     return { authStore };
   },
-
   data() {
     return {
       userName: "",
@@ -60,34 +60,28 @@ export default {
       error: ""
     };
   },
-
   methods: {
     async login() {
-  this.error = "";
-  try {
-    const payload = {
-      userName: this.userName,
-      password: this.password
-    };
-
-    await axios.post(
-      "https://localhost:7207/api/auth/login",
-      payload,
-      { withCredentials: true } 
-    );
-
-    // start of the session
-    await this.authStore.loginSuccess();
-
-    this.$router.push("app/cockpit"); 
-  } catch (error) {
-    console.error(error);
-    this.error =
-      error.response?.data?.message ||
-      "An error occurred during login.";
-  }
-},
-
+      this.error = "";
+      try {
+        const payload = {
+          userName: this.userName,
+          password: this.password
+        };
+        await axios.post(
+          "https://localhost:7207/api/auth/login",
+          payload,
+          { withCredentials: true }
+        );
+        await this.authStore.loginSuccess();
+        this.$router.push("app/cockpit");
+      } catch (error) {
+        console.error(error);
+        this.error =
+          error.response?.data?.message ||
+          "An error occurred during login.";
+      }
+    },
     async handleSubmit() {
       await this.login();
     }
@@ -119,27 +113,48 @@ form {
 
 .field {
   width: 100%;
-  position: relative;
+  position: relative; 
   margin-bottom: 18px;
+  height: 50px; 
+}
+
+/* Стили Input */
+input {
+  width: 100%;
+  height: 100%;
+  padding: 20px 10px 6px; 
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  background: transparent;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+input:focus {
+  border-color: var(--blue, #3a86c0);
 }
 
 label {
   position: absolute;
-  top: 6px;
   left: 10px;
-  font-size: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  
+  font-size: 14px;
   color: #6b7280;
-  background: #f9f9f9;
-  padding: 0 4px;
-  pointer-events: none;
+  pointer-events: none; 
+  transition: all 0.2s ease; 
 }
 
-input {
-  width: 100%;
-  padding: 18px 10px 8px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  font-size: 14px;
+input:focus ~ label,
+input:not(:placeholder-shown) ~ label {
+  top: 8px;        
+  transform: translateY(0);
+  font-size: 11px;   
+  color: var(--blue, #3a86c0);
+  font-weight: 600;
 }
 
 button {
@@ -148,7 +163,7 @@ button {
   margin-top: 10px;
   border: none;
   border-radius: 8px;
-  background-color: var(--blue);
+  background-color: var(--blue, #007bff); 
   color: white;
   font-size: 16px;
   cursor: pointer;
@@ -174,7 +189,7 @@ button:hover {
 }
 
 .link a {
-  color: var(--blue);
+  color: var(--blue, #007bff);
   text-decoration: none;
 }
 </style>

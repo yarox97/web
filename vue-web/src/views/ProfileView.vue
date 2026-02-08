@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { getAvatar } from '@/utils/getAvatar';
 import { useExternalProfile } from '@/modules/profile/composables/useExternalProfile';
+
+// Компоненты
 import SalaryPiechart from '@/components/profile/SalaryPiechart.vue';
 import Spinner from '@/components/shared/Spinner.vue';
 import ProfileHeader from '@/modules/profile/components/ProfileHeader.vue';
@@ -11,9 +13,12 @@ import ProfileHeader from '@/modules/profile/components/ProfileHeader.vue';
 const route = useRoute();
 const authStore = useAuthStore();
 
+// Определяем, смотрит ли пользователь свой профиль
 const isMyProfile = computed(() => {
-  return route.path.includes('/profile/me') || 
-         route.params.username === authStore.user?.userName;
+  // Проверка по URL или совпадению username
+  if (route.path.includes('/profile/me')) return true;
+  if (!route.params.username) return true; // Если путь /profile, считаем своим
+  return route.params.username === authStore.user?.userName;
 });
 
 const { 
@@ -28,7 +33,7 @@ const displayedUser = computed(() => {
 });
 
 const displayedAvatar = computed(() => {
-  if (isMyProfile.value) return authStore.userAvatar;
+  if (isMyProfile.value) return authStore.userAvatar; // Или URL из стора
 
   const user = externalUser.value;
   if (user?.avatarUrl) return user.avatarUrl;
@@ -36,6 +41,22 @@ const displayedAvatar = computed(() => {
   const name = user ? `${user.firstName} ${user.lastName}` : 'User';
   return getAvatar(name);
 });
+
+// --- НОВАЯ ЛОГИКА ---
+const handleUserUpdated = async () => {
+  if (isMyProfile.value) {
+    if (typeof authStore.fetchUser === 'function') {
+      await authStore.fetchUser();
+    } else if (typeof authStore.getMe === 'function') {
+      await authStore.getMe();
+    } else {
+      console.warn('В authStore не найден метод обновления пользователя (fetchUser/getMe). Данные могут быть устаревшими до перезагрузки.');
+    }
+  } else {
+    // Если (теоретически) редактировали чужой профиль
+    await fetchProfile();
+  }
+};
 
 onMounted(() => {
   fetchProfile();
@@ -45,7 +66,7 @@ onMounted(() => {
 <template>
   <div class="profile-container">
     
-    <div v-if="authStore.isLoading || isLoadingExternal" class="state-box">
+    <div v-if="authStore.isLoading || externalLoading" class="state-box">
       <Spinner></Spinner>
     </div>
 
@@ -62,11 +83,12 @@ onMounted(() => {
       <ProfileHeader 
         :user="displayedUser" 
         :avatar="displayedAvatar"
+        :can-edit="isMyProfile"
+        @user-updated="handleUserUpdated"
       ></ProfileHeader>
-
       <div class="charts-row">
         
-        <div class="card chart-card">
+        <div v-if="isMyProfile" class="card chart-card">
            <h3 class="chart-title">Salary Distribution</h3>
            <div class="chart-content">
               <SalaryPiechart />

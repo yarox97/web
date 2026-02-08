@@ -44,6 +44,7 @@ const onJoinedSuccess = () => {
 
 onMounted(() => {
   fetchMyRequests()
+  authStore.checkAuth(true)
 })
 </script>
 

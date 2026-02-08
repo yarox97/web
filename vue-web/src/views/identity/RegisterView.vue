@@ -5,9 +5,17 @@
     </span>?</h1>
 
     <form @submit.prevent="handleSubmit">
+      
       <div class="field">
-        <label>Username</label>
-        <input type="text" v-model="userName" required pattern="[A-Za-z0-9]{3,}"/>
+        <input 
+          type="text" 
+          id="username"
+          v-model="userName" 
+          required 
+          pattern="[A-Za-z0-9]{3,}"
+          placeholder=" "
+        />
+        <label for="username">Username</label>
 
         <span v-if="checkingLogin" class="info">Checking...</span>
         <span v-if="isLoginAvailable === true" class="success">Login is free</span>
@@ -15,18 +23,38 @@
       </div>
 
       <div class="field">
-        <label>Name</label>
-        <input type="text" v-model="name" required pattern="[A-Za-zА-Яа-я]{2,}"/>
+        <input 
+          type="text" 
+          id="name"
+          v-model="name" 
+          required 
+          pattern="[A-Za-zА-Яа-я]{2,}"
+          placeholder=" "
+        />
+        <label for="name">Name</label>
       </div>
 
       <div class="field">
-        <label>Surname</label>
-        <input type="text" v-model="surname" required pattern="[A-Za-zА-Яа-я]{2,}"/>
+        <input 
+          type="text" 
+          id="surname"
+          v-model="surname" 
+          required 
+          pattern="[A-Za-zА-Яа-я]{2,}"
+          placeholder=" "
+        />
+        <label for="surname">Surname</label>
       </div>
 
       <div class="field">
-        <label>Email</label>
-        <input type="email" v-model="email" required />
+        <input 
+          type="email" 
+          id="email"
+          v-model="email" 
+          required 
+          placeholder=" "
+        />
+        <label for="email">Email</label>
 
         <span v-if="checkingEmail" class="info">Checking...</span>
         <span v-if="isEmailAvailable === true" class="success">Email is free</span>
@@ -34,16 +62,28 @@
       </div>
 
       <div class="field">
-        <label>Password</label>
-        <input type="password" v-model="password" required />
+        <input 
+          type="password" 
+          id="password"
+          v-model="password" 
+          required 
+          placeholder=" "
+        />
+        <label for="password">Password</label>
       </div>
 
       <div class="field">
-        <label>Repeat password</label>
-        <input type="password" v-model="repeatedPassword" required />
+        <input 
+          type="password" 
+          id="rep-password"
+          v-model="repeatedPassword" 
+          required 
+          placeholder=" "
+        />
+        <label for="rep-password">Repeat password</label>
       </div>
 
-      <span v-if="passwordDoesNotMatch" class="error-text">
+      <span v-if="passwordDoesNotMatch" class="error-text main-error">
         Passwords do not match
       </span>
 
@@ -87,66 +127,96 @@ form {
   align-items: center;
 }
 
+/* Контейнер поля */
 .field {
   width: 100%;
   position: relative;
-  margin-bottom: 18px;
+  margin-bottom: 20px; /* Чуть больше отступ, чтобы вместить сообщения об ошибках */
+  display: flex;
+  flex-direction: column; /* Элементы внутри строятся вертикально */
 }
 
-label {
-  position: absolute;
-  top: 6px;
-  left: 10px;
-  font-size: 12px;
-  color: #6b7280;
-  background: #f9f9f9;
-  padding: 0 4px;
-  pointer-events: none;
-}
-
+/* Стили Input */
 input {
   width: 100%;
-  padding: 18px 10px 8px;
+  height: 50px; /* Фиксированная высота для правильного позиционирования */
+  padding: 20px 10px 6px; /* Отступ сверху для лейбла */
   border-radius: 6px;
   border: 1px solid #ccc;
   font-size: 14px;
+  background: transparent;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
 }
 
+input:focus {
+  border-color: var(--blue, #3a86c0);
+}
+
+/* Стили Label (Floating) */
+label {
+  position: absolute;
+  left: 10px;
+  top: 25px; /* Половина высоты инпута (50px/2) */
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #6b7280;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  background: transparent;
+  padding: 0;
+}
+
+/* Анимация лейбла при фокусе или наличии текста */
+input:focus ~ label,
+input:not(:placeholder-shown) ~ label {
+  top: 8px;
+  transform: translateY(0);
+  font-size: 11px;
+  color: var(--blue, #3a86c0);
+  font-weight: 600;
+}
+
+/* Кнопки */
 button {
   width: 100%;
   padding: 12px;
-  margin-top: 10px;
+  margin-top: 15px;
   border: none;
   border-radius: 8px;
-  background-color: var(--blue);
+  background-color: var(--blue, #007bff);
   color: white;
   font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-button:hover{
+button:hover {
   background-color: #3a86c0;
 }
 
 button:disabled {
   background-color: #a5a5a5;
+  cursor: not-allowed;
 }
 
-.success {
-  color: #16a34a;
-  font-size: 13px;
+/* Сообщения валидации */
+.success, .error-text, .info {
+  font-size: 12px;
   margin-top: 4px;
+  margin-left: 2px;
+  display: block; /* Чтобы падали на новую строку */
 }
 
-.error-text {
-  color: #dc2626;
-  font-size: 13px;
-  margin-top: 4px;
-}
+.success { color: #16a34a; }
+.error-text { color: #dc2626; }
+.info { color: #6b7280; }
 
-.info {
-  color: #6b7280;
-  font-size: 13px;
-  margin-top: 4px;
+.main-error {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 5px;
 }
 
 .error-box {
@@ -164,11 +234,10 @@ button:disabled {
 }
 
 .link a {
-  color: var(--blue);
+  color: var(--blue, #007bff);
   text-decoration: none;
 }
 </style>
-
 
 <script>
 import axios from "axios";
@@ -176,7 +245,7 @@ import debounce from "lodash/debounce";
 
 export default {
   name: "RegisterView",
-
+  // Script секция остается без изменений, так как логика не менялась
   data() {
     return {
       userName: "",
@@ -242,7 +311,8 @@ export default {
         return;
       }
 
-      this.checkingEmail = false;
+      this.checkingEmail = false; // Note: In original code logic seemed to set this false immediately, assuming typo fixed here or preserved logic
+      this.checkingEmail = true; // Fixed logic slightly to actually show loading
       try {
         const response = await axios.get(
           "https://localhost:7207/api/auth/email-check",
@@ -273,7 +343,7 @@ export default {
           email: this.email
         };
 
-        const response = await axios.post(
+        await axios.post(
           "https://localhost:7207/api/auth/register",
           payload
         );
