@@ -1,550 +1,3 @@
-<script setup>
-import { ref, onMounted, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import api from '@/services/api'
-import { useAuthStore } from '@/stores/authStore'
-import { formatDate } from '@/utils/dateFormater'
-import { getAvatar } from '@/utils/getAvatar'
-import Spinner from '@/components/shared/Spinner.vue'
-
-const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
-
-const club = ref(null)
-const loading = ref(true)
-const error = ref(null)
-const clubId = route.params.id
-
-// --- Role Hierarchy Configuration ---
-const availableRoles = ['President', 'Coach', 'Staff', 'Player']
-
-const roleWeights = {
-    'Creator': 100,
-    'President': 90,
-    'Coach': 50,
-    'Staff': 40,
-    'Player': 10,
-    'Member': 0
-}
-
-// --- State ---
-const activeTab = ref('overview')
-const isEditing = ref(false)
-const editForm = ref({})
-const isSaving = ref(false)
-const imageLoadError = ref(false)
-
-// Requests State
-const requests = ref([])
-const loadingRequests = ref(false)
-const requestFilter = ref('Pending')
-const requestsLoaded = ref(false)
-
-// Members State
-const members = ref([])
-const loadingMembers = ref(false)
-const membersLoaded = ref(false)
-
-// --- Contracts State ---
-const contracts = ref([])
-const loadingContracts = ref(false)
-const contractsLoaded = ref(false)
-const contractPage = ref(1)
-const contractPageSize = 10
-const contractTotal = ref(0)
-const activeMenuContractId = ref(null) // ID of the contract with open menu
-
-// Create Contract State
-const showContractModal = ref(false)
-const isCreatingContract = ref(false)
-const createContractForm = ref({
-    memberId: '',
-    monthlySalary: null,
-    currency: 'USD',
-    beginsFrom: '',
-    endsBy: ''
-})
-
-// --- Permissions ---
-const myClubRole = computed(() => {
-  const user = authStore.user;
-  if (!user || !user.clubDtos) return null;
-  const myMembership = user.clubDtos.find(c => String(c.clubId) === String(clubId));
-  return myMembership ? myMembership.role : null;
-});
-
-const canEdit = computed(() => ['President', 'Creator'].includes(myClubRole.value));
-const canViewMembers = computed(() => !!myClubRole.value);
-const canViewRequests = computed(() => ['President', 'Creator', 'Coach'].includes(myClubRole.value));
-const canViewContracts = computed(() => ['President', 'Creator'].includes(myClubRole.value));
-const canCreateContract = computed(() => ['President', 'Creator'].includes(myClubRole.value));
-
-// Helper: Get weight of a role string
-const getRoleWeight = (roleName) => {
-    return roleWeights[roleName] || 0;
-}
-
-// --- SORTED MEMBERS LOGIC ---
-const sortedMembers = computed(() => {
-  return [...members.value].sort((a, b) => {
-    const myId = authStore.user?.id;
-    if (a.userId === myId) return -1;
-    if (b.userId === myId) return 1;
-    const weightA = getRoleWeight(a.role);
-    const weightB = getRoleWeight(b.role);
-    if (weightB !== weightA) return weightB - weightA;
-    return (a.fullName || '').localeCompare(b.fullName || '');
-  });
-});
-
-// Filter members eligible for contract (exclude self)
-const eligibleForContract = computed(() => {
-    return sortedMembers.value.filter(m => m.userId !== authStore.user?.id);
-})
-
-// Helper: Return roles that I am allowed to assign
-const getAllowedRoles = () => {
-    const myWeight = getRoleWeight(myClubRole.value);
-    return availableRoles.filter(r => getRoleWeight(r) < myWeight);
-}
-
-// --- API: Club Details ---
-const fetchClub = async () => {
-  loading.value = true
-  try {
-    const response = await api.get(`/api/club/${clubId}`)
-    club.value = response.data
-    imageLoadError.value = false 
-  } catch (err) {
-    console.error(err)
-    error.value = "Failed to load club details."
-  } finally {
-    loading.value = false
-  }
-}
-
-const startEdit = () => {
-  editForm.value = {
-    name: club.value.name,
-    description: club.value.description,
-    avatarURL: club.value.avatarURL,
-    backGroundURL: club.value.backGroundURL,
-    volleyBoxUrl: club.value.volleyBoxUrl || club.value.VolleyBoxUrl
-  }
-  isEditing.value = true
-}
-
-const cancelEdit = () => {
-  isEditing.value = false
-  editForm.value = {}
-  imageLoadError.value = false
-}
-
-const saveClub = async () => {
-  isSaving.value = true
-  try {
-    await api.put(`/api/club/${clubId}`, editForm.value, {
-        headers: { 'Content-Type': 'application/json' }
-    })
-    club.value = { ...club.value, ...editForm.value }
-    isEditing.value = false
-    imageLoadError.value = false
-    await authStore.checkAuth(true)
-  } catch (e) {
-    console.error("Update failed", e)
-    alert("Failed to update club details")
-  } finally {
-    isSaving.value = false
-  }
-}
-
-// --- API: Members Logic ---
-const fetchMembers = async (force = false) => {
-  if (!canViewMembers.value) return
-  if (membersLoaded.value && !force) return 
-
-  loadingMembers.value = true
-  try {
-    const response = await api.get(`/api/${clubId}/members`)
-    members.value = response.data.map(m => {
-        const u = m.user || m.User || m; 
-        return {
-            userId: m.userId || m.UserId || u.id || u.Id,
-            userName: m.userName || m.UserName || u.userName || u.UserName || 'Unknown',
-            fullName: `${m.userFirstName || m.UserFirstName || u.firstName || u.FirstName || ''} ${m.userSurname || m.UserSurname || u.lastName || u.LastName || ''}`.trim(),
-            avatarUrl: m.avatarUrl || m.AvatarUrl || u.avatarUrl || u.AvatarUrl,
-            role: m.role || m.Role || 'Member',
-            joinDate: m.joinDate || m.JoinDate || m.createdAt,
-            isEditing: false, 
-            kickConfirm: false,
-            tempRole: m.role || m.Role || 'Member'
-        };
-    })
-    membersLoaded.value = true
-  } catch (e) {
-    console.error("Failed to fetch members", e)
-  } finally {
-    loadingMembers.value = false
-  }
-}
-
-const fetchRequests = async (force = false) => {
-  if (!canViewRequests.value) return
-  if (requestsLoaded.value && !force) return
-
-  loadingRequests.value = true
-  try {
-    const response = await api.get(`/api/joinClubRequests/${clubId}`)
-    requests.value = response.data.map(req => {
-        const user = req.requestor || req.Requestor || req.user || req.User || {}; 
-        return {
-            id: req.JoinClubRequestId || req.joinClubRequestId || req.id, 
-            userName: user.UserName || user.userName || 'Unknown',
-            firstName: user.FirstName || user.firstName || '',
-            lastName: user.LastName || user.lastName || '',
-            email: user.Email || user.email || '',
-            userAvatar: user.AvatarUrl || user.avatarUrl, 
-            status: req.joinClubRequestStatus || req.status || 'Pending',
-            createdAt: req.createdAt,
-            selectedRole: 'Player' 
-        }
-    })
-    requestsLoaded.value = true
-  } catch (e) {
-    console.error("Failed to fetch requests", e)
-  } finally {
-    loadingRequests.value = false
-  }
-}
-
-// --- API: Contracts Logic ---
-const fetchContracts = async (force = false) => {
-    if (!canViewContracts.value) return;
-    if (contractsLoaded.value && !force) return;
-
-    loadingContracts.value = true;
-    try {
-        const response = await api.get(`/api/contracts/club/${clubId}/contracts`, {
-            params: {
-                pageNumber: contractPage.value,
-                pageSize: contractPageSize
-            }
-        });
-        
-        if (response.data && response.data.items) {
-            contracts.value = response.data.items.map(c => ({
-                id: c.id || c.Id,
-                memberId: c.memberId || c.MemberId,
-                memberName: c.memberName || c.MemberName,
-                memberSurname: c.memberSurname || c.MemberSurname,
-                startDate: c.startDate || c.StartDate,
-                endDate: c.endDate || c.EndDate,
-                isActive: c.isActive || c.IsActive,
-                salary: c.salary || c.Salary,
-                currency: c.currency || c.Currency
-            }));
-            contractTotal.value = response.data.totalCount || 0;
-            contractsLoaded.value = true;
-        }
-    } catch (e) {
-        console.error("Failed to fetch contracts", e);
-    } finally {
-        loadingContracts.value = false;
-    }
-}
-
-const changeContractPage = (direction) => {
-    if (direction === 'next') contractPage.value++;
-    else if (direction === 'prev' && contractPage.value > 1) contractPage.value--;
-    fetchContracts(true);
-}
-
-// --- Contract Actions ---
-const toggleContractMenu = (id) => {
-    if (activeMenuContractId.value === id) {
-        activeMenuContractId.value = null;
-    } else {
-        activeMenuContractId.value = id;
-    }
-}
-
-const closeContractMenu = () => {
-    activeMenuContractId.value = null;
-}
-
-const terminateContract = async (contract) => {
-    if(!confirm(`Are you sure you want to terminate the contract for ${contract.memberName} ${contract.memberSurname}? This cannot be undone.`)) {
-        return;
-    }
-
-    try {
-        // NOTE: Adjust endpoint based on backend implementation (PUT /end or DELETE /id)
-        await api.put(`/api/contracts/${contract.id}/end`); 
-        
-        // Optimistic update or refresh
-        alert("Contract terminated.");
-        closeContractMenu();
-        await fetchContracts(true);
-    } catch (e) {
-        console.error(e);
-        alert("Failed to terminate contract.");
-    }
-}
-
-// --- Contract Creation Logic ---
-const openCreateContractModal = async () => {
-    if (!membersLoaded.value) {
-        await fetchMembers(true);
-    }
-    createContractForm.value = {
-        memberId: '',
-        monthlySalary: null,
-        currency: 'USD',
-        beginsFrom: new Date().toISOString().split('T')[0],
-        endsBy: ''
-    }
-    showContractModal.value = true;
-}
-
-const closeContractModal = () => {
-    showContractModal.value = false;
-}
-
-const submitContract = async () => {
-    if(!createContractForm.value.memberId || !createContractForm.value.monthlySalary || !createContractForm.value.beginsFrom || !createContractForm.value.endsBy) {
-        alert("Please fill in all fields");
-        return;
-    }
-    if(createContractForm.value.monthlySalary < 0) {
-        alert("Salary cannot be negative");
-        return;
-    }
-
-    isCreatingContract.value = true;
-    try {
-        const payload = {
-            memberId: createContractForm.value.memberId,
-            clubId: clubId,
-            monthlySalary: parseFloat(createContractForm.value.monthlySalary),
-            currency: createContractForm.value.currency,
-            beginsFrom: new Date(createContractForm.value.beginsFrom).toISOString(),
-            endsBy: new Date(createContractForm.value.endsBy).toISOString(),
-            responserId: authStore.user?.id
-        };
-
-        await api.post('/api/contracts/assign-contract', payload);
-        
-        await fetchContracts(true);
-        closeContractModal();
-        alert("Contract created successfully!");
-    } catch (e) {
-        console.error("Failed to create contract", e);
-        if(e.response && e.response.data && e.response.data.message) {
-            alert("Error: " + e.response.data.message);
-        } else {
-            alert("Failed to create contract.");
-        }
-    } finally {
-        isCreatingContract.value = false;
-    }
-}
-
-const handleImageError = (event, userName) => {
-    event.target.src = getAvatar(userName || 'User');
-}
-
-// --- Member Actions ---
-const startMemberEdit = (member) => {
-    member.kickConfirm = false;
-    member.tempRole = member.role;
-    member.isEditing = true;
-}
-
-const cancelMemberEdit = (member) => {
-    member.isEditing = false;
-    member.tempRole = member.role;
-}
-
-const saveMemberRole = async (member) => {
-    if (member.tempRole === member.role) {
-        member.isEditing = false;
-        return;
-    }
-    if (getRoleWeight(member.tempRole) >= getRoleWeight(myClubRole.value)) {
-        alert("You cannot assign a role equal to or higher than your own.");
-        return;
-    }
-
-    try {
-        await api.put(
-            `/api/${clubId}/members/${member.userId}/change-role`, 
-            JSON.stringify(member.tempRole), 
-            { headers: { 'Content-Type': 'application/json' } }
-        );
-        member.role = member.tempRole;
-        member.isEditing = false;
-    } catch (e) {
-        console.error("Failed to update role", e);
-        alert("Failed to update role.");
-    }
-}
-
-const askToKick = (member) => {
-    member.isEditing = false;
-    member.kickConfirm = true;
-}
-
-const cancelKick = (member) => {
-    member.kickConfirm = false;
-}
-
-const confirmKick = async (member) => {
-    try {
-        await api.delete(`/api/${clubId}/members/${member.userId}`);
-        members.value = members.value.filter(m => m.userId !== member.userId);
-    } catch (e) {
-        console.error("Failed to kick member", e);
-        alert("Failed to kick member.");
-        member.kickConfirm = false;
-    }
-}
-
-const canManageMember = (member) => {
-    if (!canEdit.value) return false;
-    if (authStore.user?.id === member.userId) return false;
-    const myWeight = getRoleWeight(myClubRole.value);
-    const targetWeight = getRoleWeight(member.role);
-    if (targetWeight >= myWeight) return false;
-    return true;
-}
-
-const filteredRequests = computed(() => {
-    if (requestFilter.value === 'All') return requests.value
-    return requests.value.filter(r => r.status === requestFilter.value)
-})
-
-const handleRequest = async (requestItem, action) => {
-    let requestBody = null;
-    if (action === 'Approve') {
-        if (!requestItem.selectedRole) {
-            alert("Please select a role.");
-            return;
-        }
-        requestBody = { role: requestItem.selectedRole };
-    } else {
-        if (!confirm(`Are you sure you want to REJECT this request?`)) return;
-    }
-
-    try {
-        await api.put(
-            `/api/joinClubRequests/${clubId}/requests/${requestItem.id}/${action.toLowerCase()}`, 
-            requestBody
-        )
-        const reqIndex = requests.value.findIndex(r => r.id === requestItem.id)
-        if (reqIndex !== -1) {
-            requests.value[reqIndex].status = action === 'Approve' ? 'Approved' : 'Rejected'
-        }
-        if (action === 'Approve' && activeTab.value === 'members') fetchMembers(true);
-        if (action === 'Approve' && activeTab.value !== 'members') membersLoaded.value = false;
-    } catch (e) {
-        console.error(e);
-        alert(`Failed to ${action} request.`);
-    }
-}
-
-const getStatusClass = (status) => {
-    if (status === 'Pending') return 'status-pending'
-    if (status === 'Approved') return 'status-approved'
-    if (status === 'Rejected') return 'status-rejected'
-    return ''
-}
-
-const getRoleBadgeClass = (role) => {
-    const r = (role || '').toLowerCase();
-    if (r === 'president' || r === 'creator') return 'role-admin';
-    if (r === 'coach') return 'role-coach';
-    if (r === 'staff') return 'role-staff';
-    return 'role-player';
-}
-
-const goToProfile = (userName) => {
-    if (!userName) return; 
-    router.push({ name: 'UserProfile', params: { username: userName } })
-}
-
-const goToContractDetails = (contractId) => {
-    router.push({ name: 'ContractDetails', params: { id: contractId } })
-}
-
-const formatCurrency = (amount, currency) => {
-    if(amount == null) return '-';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(amount);
-}
-
-const clubAvatar = computed(() => {
-    if (isEditing.value && editForm.value.avatarURL) return editForm.value.avatarURL;
-    if (imageLoadError.value) return getAvatar(club.value?.name || 'Club');
-    if (club.value?.avatarURL) return club.value.avatarURL;
-    return getAvatar(club.value?.name || 'Club');
-})
-
-const onAvatarError = () => { imageLoadError.value = true; }
-
-const coverStyle = computed(() => {
-    const url = isEditing.value ? editForm.value.backGroundURL : club.value?.backGroundURL
-    if (url) {
-        return { backgroundImage: `url(${url})` }
-    }
-    return { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }
-})
-
-const volleyboxWidgetSrc = computed(() => {
-    const id = club.value?.volleyBoxUrl || club.value?.VolleyBoxUrl;
-    if (!id) return null;
-    return `https://volleybox.net/widget/soonest_match/${id}`;
-})
-
-const copyCode = () => {
-    if(club.value?.joinCode) {
-        navigator.clipboard.writeText(club.value.joinCode)
-        alert('Invite code copied to clipboard!')
-    }
-}
-
-const goBack = () => router.back()
-
-const goToClubs = () => router.push({ name: 'clubs' })
-
-// --- TAB SYNCHRONIZATION LOGIC ---
-const checkTabParam = () => {
-    const tabParam = route.query.tab
-    if (tabParam && ['overview', 'members', 'requests', 'contracts'].includes(tabParam)) {
-        activeTab.value = tabParam
-    }
-}
-
-watch(activeTab, (newTab) => {
-    if (newTab === 'requests') fetchRequests()
-    if (newTab === 'members') fetchMembers()
-    if (newTab === 'contracts') fetchContracts()
-})
-
-watch(() => route.query.tab, (newTab) => {
-    if (newTab && ['overview', 'members', 'requests', 'contracts'].includes(newTab)) {
-        activeTab.value = newTab
-    }
-})
-
-onMounted(async () => {
-    await fetchClub()
-    checkTabParam()
-    if (activeTab.value === 'members') fetchMembers()
-    if (activeTab.value === 'requests') fetchRequests()
-    if (activeTab.value === 'contracts') fetchContracts()
-})
-</script>
-
 <template>
   <div class="page-container">
     <div v-if="activeMenuContractId" class="menu-backdrop" @click="closeContractMenu"></div>
@@ -600,6 +53,10 @@ onMounted(async () => {
           <span v-if="requests.some(r => r.status === 'Pending')" class="badge-dot"></span>
         </button>
         <button v-if="canViewContracts" class="tab-btn" :class="{ active: activeTab === 'contracts' }" @click="activeTab = 'contracts'">Contracts</button>
+        
+        <button v-if="canViewMembers" class="tab-btn" @click="goToClubTasks" title="Go to Club Tasks">
+          Tasks <span class="external-icon">↗</span>
+        </button>
       </div>
 
       <div v-if="activeTab === 'overview'" class="tab-content">
@@ -881,6 +338,560 @@ onMounted(async () => {
   </div>
 </template>
 
+<script setup>
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import api from '@/services/api'
+import { useAuthStore } from '@/stores/authStore'
+import { formatDate } from '@/utils/dateFormater'
+import { getAvatar } from '@/utils/getAvatar'
+import Spinner from '@/components/shared/Spinner.vue'
+
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+
+const club = ref(null)
+const loading = ref(true)
+const error = ref(null)
+const clubId = route.params.id
+
+// --- Role Hierarchy Configuration ---
+const availableRoles = ['President', 'Coach', 'Staff', 'Player']
+
+const roleWeights = {
+    'Creator': 100,
+    'President': 90,
+    'Coach': 50,
+    'Staff': 40,
+    'Player': 10,
+    'Member': 0
+}
+
+// --- State ---
+const activeTab = ref('overview')
+const isEditing = ref(false)
+const editForm = ref({})
+const isSaving = ref(false)
+const imageLoadError = ref(false)
+
+// Requests State
+const requests = ref([])
+const loadingRequests = ref(false)
+const requestFilter = ref('Pending')
+const requestsLoaded = ref(false)
+
+// Members State
+const members = ref([])
+const loadingMembers = ref(false)
+const membersLoaded = ref(false)
+
+// --- Contracts State ---
+const contracts = ref([])
+const loadingContracts = ref(false)
+const contractsLoaded = ref(false)
+const contractPage = ref(1)
+const contractPageSize = 10
+const contractTotal = ref(0)
+const activeMenuContractId = ref(null)
+
+// Create Contract State
+const showContractModal = ref(false)
+const isCreatingContract = ref(false)
+const createContractForm = ref({
+    memberId: '',
+    monthlySalary: null,
+    currency: 'USD',
+    beginsFrom: '',
+    endsBy: ''
+})
+
+// --- Permissions ---
+const myClubRole = computed(() => {
+  const user = authStore.user;
+  if (!user || !user.clubDtos) return null;
+  const myMembership = user.clubDtos.find(c => String(c.clubId) === String(clubId));
+  return myMembership ? myMembership.role : null;
+});
+
+const canEdit = computed(() => ['President', 'Creator'].includes(myClubRole.value));
+const canViewMembers = computed(() => !!myClubRole.value);
+const canViewRequests = computed(() => ['President', 'Creator', 'Coach'].includes(myClubRole.value));
+const canViewContracts = computed(() => ['President', 'Creator'].includes(myClubRole.value));
+const canCreateContract = computed(() => ['President', 'Creator'].includes(myClubRole.value));
+
+// Helper: Get weight of a role string
+const getRoleWeight = (roleName) => {
+    return roleWeights[roleName] || 0;
+}
+
+// --- SORTED MEMBERS LOGIC ---
+const sortedMembers = computed(() => {
+  return [...members.value].sort((a, b) => {
+    const myId = authStore.user?.id;
+    if (a.userId === myId) return -1;
+    if (b.userId === myId) return 1;
+    const weightA = getRoleWeight(a.role);
+    const weightB = getRoleWeight(b.role);
+    if (weightB !== weightA) return weightB - weightA;
+    return (a.fullName || '').localeCompare(b.fullName || '');
+  });
+});
+
+// Filter members eligible for contract (exclude self)
+const eligibleForContract = computed(() => {
+    return sortedMembers.value.filter(m => m.userId !== authStore.user?.id);
+})
+
+// Helper: Return roles that I am allowed to assign
+const getAllowedRoles = () => {
+    const myWeight = getRoleWeight(myClubRole.value);
+    return availableRoles.filter(r => getRoleWeight(r) < myWeight);
+}
+
+// --- API: Club Details ---
+const fetchClub = async () => {
+  loading.value = true
+  try {
+    const response = await api.get(`/api/club/${clubId}`)
+    club.value = response.data
+    imageLoadError.value = false 
+  } catch (err) {
+    console.error(err)
+    error.value = "Failed to load club details."
+  } finally {
+    loading.value = false
+  }
+}
+
+const startEdit = () => {
+  editForm.value = {
+    name: club.value.name,
+    description: club.value.description,
+    avatarURL: club.value.avatarURL,
+    backGroundURL: club.value.backGroundURL,
+    volleyBoxUrl: club.value.volleyBoxUrl || club.value.VolleyBoxUrl
+  }
+  isEditing.value = true
+}
+
+const cancelEdit = () => {
+  isEditing.value = false
+  editForm.value = {}
+  imageLoadError.value = false
+}
+
+const saveClub = async () => {
+  isSaving.value = true
+  try {
+    await api.put(`/api/club/${clubId}`, editForm.value, {
+        headers: { 'Content-Type': 'application/json' }
+    })
+    club.value = { ...club.value, ...editForm.value }
+    isEditing.value = false
+    imageLoadError.value = false
+    await authStore.checkAuth(true)
+  } catch (e) {
+    console.error("Update failed", e)
+    alert("Failed to update club details")
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// --- API: Members Logic ---
+const fetchMembers = async (force = false) => {
+  if (!canViewMembers.value) return
+  if (membersLoaded.value && !force) return 
+
+  loadingMembers.value = true
+  try {
+    const response = await api.get(`/api/${clubId}/members`)
+    members.value = response.data.map(m => {
+        const u = m.user || m.User || m; 
+        return {
+            userId: m.userId || m.UserId || u.id || u.Id,
+            userName: m.userName || m.UserName || u.userName || u.UserName || 'Unknown',
+            fullName: `${m.userFirstName || m.UserFirstName || u.firstName || u.FirstName || ''} ${m.userSurname || m.UserSurname || u.lastName || u.LastName || ''}`.trim(),
+            avatarUrl: m.avatarUrl || m.AvatarUrl || u.avatarUrl || u.AvatarUrl,
+            role: m.role || m.Role || 'Member',
+            joinDate: m.joinDate || m.JoinDate || m.createdAt,
+            isEditing: false, 
+            kickConfirm: false,
+            tempRole: m.role || m.Role || 'Member'
+        };
+    })
+    membersLoaded.value = true
+  } catch (e) {
+    console.error("Failed to fetch members", e)
+  } finally {
+    loadingMembers.value = false
+  }
+}
+
+const fetchRequests = async (force = false) => {
+  if (!canViewRequests.value) return
+  if (requestsLoaded.value && !force) return
+
+  loadingRequests.value = true
+  try {
+    const response = await api.get(`/api/joinClubRequests/${clubId}`)
+    requests.value = response.data.map(req => {
+        const user = req.requestor || req.Requestor || req.user || req.User || {}; 
+        return {
+            id: req.JoinClubRequestId || req.joinClubRequestId || req.id, 
+            userName: user.UserName || user.userName || 'Unknown',
+            firstName: user.FirstName || user.firstName || '',
+            lastName: user.LastName || user.lastName || '',
+            email: user.Email || user.email || '',
+            userAvatar: user.AvatarUrl || user.avatarUrl, 
+            status: req.joinClubRequestStatus || req.status || 'Pending',
+            createdAt: req.createdAt,
+            selectedRole: 'Player' 
+        }
+    })
+    requestsLoaded.value = true
+  } catch (e) {
+    console.error("Failed to fetch requests", e)
+  } finally {
+    loadingRequests.value = false
+  }
+}
+
+// --- API: Contracts Logic ---
+const fetchContracts = async (force = false) => {
+    if (!canViewContracts.value) return;
+    if (contractsLoaded.value && !force) return;
+
+    loadingContracts.value = true;
+    try {
+        const response = await api.get(`/api/contracts/club/${clubId}/contracts`, {
+            params: {
+                pageNumber: contractPage.value,
+                pageSize: contractPageSize
+            }
+        });
+        
+        if (response.data && response.data.items) {
+            contracts.value = response.data.items.map(c => ({
+                id: c.id || c.Id,
+                memberId: c.memberId || c.MemberId,
+                memberName: c.memberName || c.MemberName,
+                memberSurname: c.memberSurname || c.MemberSurname,
+                startDate: c.startDate || c.StartDate,
+                endDate: c.endDate || c.EndDate,
+                isActive: c.isActive || c.IsActive,
+                salary: c.salary || c.Salary,
+                currency: c.currency || c.Currency
+            }));
+            contractTotal.value = response.data.totalCount || 0;
+            contractsLoaded.value = true;
+        }
+    } catch (e) {
+        console.error("Failed to fetch contracts", e);
+    } finally {
+        loadingContracts.value = false;
+    }
+}
+
+const changeContractPage = (direction) => {
+    if (direction === 'next') contractPage.value++;
+    else if (direction === 'prev' && contractPage.value > 1) contractPage.value--;
+    fetchContracts(true);
+}
+
+// --- Contract Actions ---
+const toggleContractMenu = (id) => {
+    if (activeMenuContractId.value === id) {
+        activeMenuContractId.value = null;
+    } else {
+        activeMenuContractId.value = id;
+    }
+}
+
+const closeContractMenu = () => {
+    activeMenuContractId.value = null;
+}
+
+const terminateContract = async (contract) => {
+    if(!confirm(`Are you sure you want to terminate the contract for ${contract.memberName} ${contract.memberSurname}? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        await api.put(`/api/contracts/${contract.id}/end`); 
+        alert("Contract terminated.");
+        closeContractMenu();
+        await fetchContracts(true);
+    } catch (e) {
+        console.error(e);
+        alert("Failed to terminate contract.");
+    }
+}
+
+// --- Contract Creation Logic ---
+const openCreateContractModal = async () => {
+    if (!membersLoaded.value) {
+        await fetchMembers(true);
+    }
+    createContractForm.value = {
+        memberId: '',
+        monthlySalary: null,
+        currency: 'USD',
+        beginsFrom: new Date().toISOString().split('T')[0],
+        endsBy: ''
+    }
+    showContractModal.value = true;
+}
+
+const closeContractModal = () => {
+    showContractModal.value = false;
+}
+
+const submitContract = async () => {
+    if(!createContractForm.value.memberId || !createContractForm.value.monthlySalary || !createContractForm.value.beginsFrom || !createContractForm.value.endsBy) {
+        alert("Please fill in all fields");
+        return;
+    }
+    if(createContractForm.value.monthlySalary < 0) {
+        alert("Salary cannot be negative");
+        return;
+    }
+
+    isCreatingContract.value = true;
+    try {
+        const payload = {
+            memberId: createContractForm.value.memberId,
+            clubId: clubId,
+            monthlySalary: parseFloat(createContractForm.value.monthlySalary),
+            currency: createContractForm.value.currency,
+            beginsFrom: new Date(createContractForm.value.beginsFrom).toISOString(),
+            endsBy: new Date(createContractForm.value.endsBy).toISOString(),
+            responserId: authStore.user?.id
+        };
+
+        await api.post('/api/contracts/assign-contract', payload);
+        
+        await fetchContracts(true);
+        closeContractModal();
+        alert("Contract created successfully!");
+    } catch (e) {
+        console.error("Failed to create contract", e);
+        if(e.response && e.response.data && e.response.data.message) {
+            alert("Error: " + e.response.data.message);
+        } else {
+            alert("Failed to create contract.");
+        }
+    } finally {
+        isCreatingContract.value = false;
+    }
+}
+
+const handleImageError = (event, userName) => {
+    event.target.src = getAvatar(userName || 'User');
+}
+
+// --- Member Actions ---
+const startMemberEdit = (member) => {
+    member.kickConfirm = false;
+    member.tempRole = member.role;
+    member.isEditing = true;
+}
+
+const cancelMemberEdit = (member) => {
+    member.isEditing = false;
+    member.tempRole = member.role;
+}
+
+const saveMemberRole = async (member) => {
+    if (member.tempRole === member.role) {
+        member.isEditing = false;
+        return;
+    }
+    if (getRoleWeight(member.tempRole) >= getRoleWeight(myClubRole.value)) {
+        alert("You cannot assign a role equal to or higher than your own.");
+        return;
+    }
+
+    try {
+        await api.put(
+            `/api/${clubId}/members/${member.userId}/change-role`, 
+            JSON.stringify(member.tempRole), 
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        member.role = member.tempRole;
+        member.isEditing = false;
+    } catch (e) {
+        console.error("Failed to update role", e);
+        alert("Failed to update role.");
+    }
+}
+
+const askToKick = (member) => {
+    member.isEditing = false;
+    member.kickConfirm = true;
+}
+
+const cancelKick = (member) => {
+    member.kickConfirm = false;
+}
+
+const confirmKick = async (member) => {
+    try {
+        await api.delete(`/api/${clubId}/members/${member.userId}`);
+        members.value = members.value.filter(m => m.userId !== member.userId);
+    } catch (e) {
+        console.error("Failed to kick member", e);
+        alert("Failed to kick member.");
+        member.kickConfirm = false;
+    }
+}
+
+const canManageMember = (member) => {
+    if (!canEdit.value) return false;
+    if (authStore.user?.id === member.userId) return false;
+    const myWeight = getRoleWeight(myClubRole.value);
+    const targetWeight = getRoleWeight(member.role);
+    if (targetWeight >= myWeight) return false;
+    return true;
+}
+
+const filteredRequests = computed(() => {
+    if (requestFilter.value === 'All') return requests.value
+    return requests.value.filter(r => r.status === requestFilter.value)
+})
+
+const handleRequest = async (requestItem, action) => {
+    let requestBody = null;
+    if (action === 'Approve') {
+        if (!requestItem.selectedRole) {
+            alert("Please select a role.");
+            return;
+        }
+        requestBody = { role: requestItem.selectedRole };
+    } else {
+        if (!confirm(`Are you sure you want to REJECT this request?`)) return;
+    }
+
+    try {
+        await api.put(
+            `/api/joinClubRequests/${clubId}/requests/${requestItem.id}/${action.toLowerCase()}`, 
+            requestBody
+        )
+        const reqIndex = requests.value.findIndex(r => r.id === requestItem.id)
+        if (reqIndex !== -1) {
+            requests.value[reqIndex].status = action === 'Approve' ? 'Approved' : 'Rejected'
+        }
+        if (action === 'Approve' && activeTab.value === 'members') fetchMembers(true);
+        if (action === 'Approve' && activeTab.value !== 'members') membersLoaded.value = false;
+    } catch (e) {
+        console.error(e);
+        alert(`Failed to ${action} request.`);
+    }
+}
+
+const getStatusClass = (status) => {
+    if (status === 'Pending') return 'status-pending'
+    if (status === 'Approved') return 'status-approved'
+    if (status === 'Rejected') return 'status-rejected'
+    return ''
+}
+
+const getRoleBadgeClass = (role) => {
+    const r = (role || '').toLowerCase();
+    if (r === 'president' || r === 'creator') return 'role-admin';
+    if (r === 'coach') return 'role-coach';
+    if (r === 'staff') return 'role-staff';
+    return 'role-player';
+}
+
+const goToProfile = (userName) => {
+    if (!userName) return; 
+    router.push({ name: 'UserProfile', params: { username: userName } })
+}
+
+const goToContractDetails = (contractId) => {
+    router.push({ name: 'ContractDetails', params: { id: contractId } })
+}
+
+const goToClubTasks = () => {
+    router.push({ 
+      name: 'Tasks', 
+      query: { 
+        mode: 'club', 
+        clubId: clubId 
+      } 
+    })
+}
+
+const formatCurrency = (amount, currency) => {
+    if(amount == null) return '-';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(amount);
+}
+
+const clubAvatar = computed(() => {
+    if (isEditing.value && editForm.value.avatarURL) return editForm.value.avatarURL;
+    if (imageLoadError.value) return getAvatar(club.value?.name || 'Club');
+    if (club.value?.avatarURL) return club.value.avatarURL;
+    return getAvatar(club.value?.name || 'Club');
+})
+
+const onAvatarError = () => { imageLoadError.value = true; }
+
+const coverStyle = computed(() => {
+    const url = isEditing.value ? editForm.value.backGroundURL : club.value?.backGroundURL
+    if (url) {
+        return { backgroundImage: `url(${url})` }
+    }
+    return { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }
+})
+
+const volleyboxWidgetSrc = computed(() => {
+    const id = club.value?.volleyBoxUrl || club.value?.VolleyBoxUrl;
+    if (!id) return null;
+    return `https://volleybox.net/widget/soonest_match/${id}`;
+})
+
+const copyCode = () => {
+    if(club.value?.joinCode) {
+        navigator.clipboard.writeText(club.value.joinCode)
+        alert('Invite code copied to clipboard!')
+    }
+}
+
+const goBack = () => router.back()
+
+const goToClubs = () => router.push({ name: 'clubs' })
+
+// --- TAB SYNCHRONIZATION LOGIC ---
+const checkTabParam = () => {
+    const tabParam = route.query.tab
+    if (tabParam && ['overview', 'members', 'requests', 'contracts'].includes(tabParam)) {
+        activeTab.value = tabParam
+    }
+}
+
+watch(activeTab, (newTab) => {
+    if (newTab === 'requests') fetchRequests()
+    if (newTab === 'members') fetchMembers()
+    if (newTab === 'contracts') fetchContracts()
+})
+
+watch(() => route.query.tab, (newTab) => {
+    if (newTab && ['overview', 'members', 'requests', 'contracts'].includes(newTab)) {
+        activeTab.value = newTab
+    }
+})
+
+onMounted(async () => {
+    await fetchClub()
+    checkTabParam()
+    if (activeTab.value === 'members') fetchMembers()
+    if (activeTab.value === 'requests') fetchRequests()
+    if (activeTab.value === 'contracts') fetchContracts()
+})
+</script>
+
 <style scoped>
 /* Page & Basics */
 .page-container { width: 100%; max-width: 2200px; margin: 0 auto; box-sizing: border-box; padding: 20px; font-family: 'Segoe UI', sans-serif; color: #1f2937; }
@@ -918,9 +929,14 @@ onMounted(async () => {
 .tab-btn.active { color: #0ea5e9; border-bottom-color: #0ea5e9; }
 .badge-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; position: absolute; top: 8px; right: -5px; }
 
+.external-icon {
+  font-size: 0.85rem;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
 /* Layouts */
 .grid-layout { display: grid; grid-template-columns: 1fr 350px; gap: 24px; transition: all 0.3s ease; }
-/* === NEW RULE: FULL WIDTH IF NO WIDGET === */
 .grid-layout.full-width { grid-template-columns: 1fr; }
 
 .left-column, .right-column { display: flex; flex-direction: column; }
@@ -928,7 +944,6 @@ onMounted(async () => {
 .club-desc { white-space: pre-line; word-break: break-word; font-size: 1rem; line-height: 1.6; color: #4b5563; }
 .placeholder-text { font-style: italic; color: #6b7280; }
 
-/* === NEW: Club Highlights Styling === */
 .club-highlights { margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 20px; }
 .highlights-title { font-size: 1rem; color: #374151; margin: 0 0 15px 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 .stats-grid { display: flex; gap: 30px; flex-wrap: wrap; }

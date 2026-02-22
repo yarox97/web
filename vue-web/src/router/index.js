@@ -14,6 +14,7 @@ import ClubDetailsView from '@/views/clubs/ClubDetailsView.vue';
 import NotificationDetailsView from '@/views/notifications/NotificationDetailsView.vue';
 import UserContractsView from '@/modules/contracts/components/UserContracts.vue';
 import ContractDetailsView from '@/modules/contracts/components/ContractDetailsView.vue';
+import TasksView from '@/views/tasks/TasksView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -87,6 +88,18 @@ const router = createRouter({
           path: '/app/club/:id',
           name: 'ClubDetails',
           component: ClubDetailsView
+        },
+        {
+          path: 'tasks',
+          name: 'Tasks',
+          component: TasksView,
+          meta: { requiresAuth: true }
+        },
+        {
+          path: '/tasks/:id',
+          name: 'TaskDetails',
+          component: () => import('@/views/tasks/TaskDetailsView.vue'),
+          meta: { requiresAuth: true }
         }
       ]
     },
