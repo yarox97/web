@@ -16,10 +16,15 @@
           </div>
           
           <div class="members-list">
-            <label v-for="member in members" :key="member.userId" class="member-checkbox">
+            <div v-if="availableMembers.length === 0" class="empty-state">
+              No other members found in this club.
+            </div>
+            <label v-for="member in availableMembers" :key="member.userId" class="member-checkbox">
               <input type="checkbox" :value="member.userId" v-model="selectedIds">
-              <span class="member-name">{{ member.fullName || member.userName }}</span>
-              <span class="member-role">{{ member.role }}</span>
+              <div class="member-info">
+                <span class="member-name">{{ member.fullName || member.userName }}</span>
+                <span class="member-role">{{ member.role }}</span>
+              </div>
             </label>
           </div>
           <small v-if="selectedIds.length === 0" class="error-text">Please select at least one receiver.</small>
@@ -40,7 +45,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/authStore'
 import api from '@/services/api'
 import tasksService from '@/modules/tasks/services/taskService'
 import Spinner from '@/components/shared/Spinner.vue'
@@ -52,11 +58,21 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'updated'])
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const isSaving = ref(false)
 const members = ref([])
 const selectedIds = ref([...props.currentIds])
+
+// Фильтруем список: убираем самого себя из выбора получателей
+const availableMembers = computed(() => {
+  const currentUserId = authStore.user?.id;
+  // Фильтруем, чтобы ID не совпадал с текущим пользователем
+  return members.value.filter(m => 
+    String(m.userId).toLowerCase() !== String(currentUserId).toLowerCase()
+  );
+})
 
 const fetchMembers = async () => {
   try {
@@ -78,12 +94,14 @@ const fetchMembers = async () => {
 }
 
 const selectAll = () => {
-  selectedIds.value = members.value.map(m => m.userId)
+  // Выбираем только доступных (себя не добавляем)
+  selectedIds.value = availableMembers.value.map(m => m.userId)
 }
 
 const save = async () => {
   isSaving.value = true
   try {
+    // ВАЖНО: Service должен отправлять объект { newReceiverIds: [...] }
     await tasksService.updateTaskReceivers(props.taskId, selectedIds.value)
     emit('updated')
   } catch (e) {
@@ -94,43 +112,60 @@ const save = async () => {
   }
 }
 
-onMounted(fetchMembers)
+onMounted(async () => {
+  if (!authStore.isAuthenticated) {
+    await authStore.checkAuth();
+  }
+  fetchMembers();
+})
 </script>
 
 <style scoped>
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.2s; padding: 20px; box-sizing: border-box; }
-.modal-card { background: white; border-radius: 16px; width: 500px; max-width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.2s; padding: 20px; box-sizing: border-box; backdrop-filter: blur(2px); }
+.modal-card { background: white; border-radius: 16px; width: 500px; max-width: 100%; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #e2e8f0; }
-.modal-header h3 { margin: 0; font-size: 1.25rem; color: #0f172a; }
-.close-btn { background: none; border: none; color: #64748b; cursor: pointer; transition: color 0.2s; display: flex; align-items: center; justify-content: center; }
-.close-btn:hover { color: #0f172a; }
-.modal-body { padding: 24px; overflow-y: auto; }
+.modal-header h3 { margin: 0; font-size: 1.25rem; color: #0f172a; font-weight: 700; }
+
+.close-btn { background: none; border: none; color: #64748b; cursor: pointer; transition: color 0.2s; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; }
+.close-btn:hover { color: #0f172a; background: #f1f5f9; }
+
+.modal-body { padding: 0; overflow: hidden; display: flex; flex-direction: column; flex: 1; }
 .loading-box { min-height: 200px; display: flex; justify-content: center; align-items: center; }
 
-/* Receivers Selection */
-.receivers-section { display: flex; flex-direction: column; gap: 16px; }
-.quick-select { display: flex; gap: 8px; flex-wrap: wrap; }
-.btn-tiny { background: white; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; }
-.btn-tiny:hover { background: #f1f5f9; border-color: #94a3b8; }
+/* Receivers Section */
+.receivers-section { display: flex; flex-direction: column; height: 100%; }
+
+.quick-select { display: flex; gap: 10px; padding: 16px 24px; border-bottom: 1px solid #f1f5f9; background: #fff; }
+.btn-tiny { background: white; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; }
+.btn-tiny:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
 .btn-clear { color: #ef4444; border-color: #fca5a5; }
-.btn-clear:hover { background: #fef2f2; }
+.btn-clear:hover { background: #fef2f2; border-color: #ef4444; }
 
-.members-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #f8fafc; }
-.member-checkbox { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 8px; border-radius: 6px; transition: background 0.2s; }
-.member-checkbox:hover { background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-.member-checkbox input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-.member-name { font-weight: 600; color: #1e293b; flex: 1; font-size: 0.95rem; }
-.member-role { font-size: 0.75rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-weight: 700; text-transform: uppercase; }
+.members-list { flex: 1; overflow-y: auto; padding: 16px 24px; background: #f8fafc; display: flex; flex-direction: column; gap: 8px; }
 
-.error-text { color: #ef4444; font-size: 0.85rem; font-weight: 500; }
+.member-checkbox { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 10px 12px; border-radius: 8px; transition: all 0.2s; background: white; border: 1px solid #e2e8f0; }
+.member-checkbox:hover { border-color: var(--color-primary, #007bff); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+.member-checkbox:has(input:checked) { border-color: var(--color-primary, #007bff); background: #f0f7ff; }
 
-.modal-footer { padding: 20px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+.member-checkbox input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary, #007bff); margin: 0; }
+
+.member-info { display: flex; align-items: center; justify-content: space-between; flex: 1; width: 100%; }
+.member-name { font-weight: 600; color: #1e293b; font-size: 0.95rem; }
+.member-role { font-size: 0.7rem; background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #e2e8f0; }
+
+.empty-state { text-align: center; color: #94a3b8; font-style: italic; padding: 20px; }
+.error-text { color: #ef4444; font-size: 0.85rem; font-weight: 600; text-align: center; padding: 10px; background: #fef2f2; border-top: 1px solid #fee2e2; }
+
+.modal-footer { padding: 20px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; background: white; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+
 .btn-primary { background: var(--color-primary, #007bff); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-.btn-secondary:hover:not(:disabled) { background: #f1f5f9; }
 
-.content-animate { animation: fadeIn 0.3s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.btn-secondary { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.btn-secondary:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
+
+.content-animate { animation: scaleIn 0.2s ease-out; }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 </style>

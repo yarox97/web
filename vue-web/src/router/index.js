@@ -52,42 +52,50 @@ const router = createRouter({
         {
           path: 'cockpit', 
           name: 'cockpit',
-          component: CockPitView
+          component: CockPitView,
+          meta: { requiresAuth: true }
         },
         {
           path: '/notifications/:id',
           name: 'NotificationDetails',
-          component: NotificationDetailsView
+          component: NotificationDetailsView,
+          meta: { requiresAuth: true }
         },
         {
           path: '/app/contracts',
           name: 'contracts',
-          component: UserContractsView
+          component: UserContractsView,
+          meta: { requiresAuth: true }
         },
         {
           path: '/app/contracts/:id',
           name: 'ContractDetails',
-          component: ContractDetailsView
+          component: ContractDetailsView,
+          meta: { requiresAuth: true }
         },
         {
           path: '/app/profile/me',
           name: 'profile',
-          component: ProfileView
+          component: ProfileView,
+          meta: { requiresAuth: true }
         },
         {
           path: 'profile/:username', 
           name: 'UserProfile',       
-          component: ProfileView
+          component: ProfileView,
+          meta: { requiresAuth: true }
         },
         {
           path: 'clubs',
           name: 'clubs',
-          component: ClubsView
+          component: ClubsView,
+          meta: { requiresAuth: true }
         },
         {
           path: '/app/club/:id',
           name: 'ClubDetails',
-          component: ClubDetailsView
+          component: ClubDetailsView,
+          meta: { requiresAuth: true }
         },
         {
           path: 'tasks',
@@ -99,6 +107,12 @@ const router = createRouter({
           path: '/tasks/:id',
           name: 'TaskDetails',
           component: () => import('@/views/tasks/TaskDetailsView.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'calendar',
+          name: 'calendar',
+          component: () => import('@/views/calendar/CalendarView.vue'),
           meta: { requiresAuth: true }
         }
       ]

@@ -42,7 +42,6 @@ export const useAuthStore = defineStore('auth', {
         this.user = null;
         this.isAuthenticated = false;
 
-        router.push('/login'); 
       } finally {
         if (!runInBackground) {
           this.isLoading = false;

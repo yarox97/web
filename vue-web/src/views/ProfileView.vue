@@ -15,9 +15,8 @@ const authStore = useAuthStore();
 
 // Определяем, смотрит ли пользователь свой профиль
 const isMyProfile = computed(() => {
-  // Проверка по URL или совпадению username
   if (route.path.includes('/profile/me')) return true;
-  if (!route.params.username) return true; // Если путь /profile, считаем своим
+  if (!route.params.username) return true; 
   return route.params.username === authStore.user?.userName;
 });
 
@@ -33,7 +32,7 @@ const displayedUser = computed(() => {
 });
 
 const displayedAvatar = computed(() => {
-  if (isMyProfile.value) return authStore.userAvatar; // Или URL из стора
+  if (isMyProfile.value) return authStore.userAvatar; 
 
   const user = externalUser.value;
   if (user?.avatarUrl) return user.avatarUrl;
@@ -42,18 +41,14 @@ const displayedAvatar = computed(() => {
   return getAvatar(name);
 });
 
-// --- НОВАЯ ЛОГИКА ---
 const handleUserUpdated = async () => {
   if (isMyProfile.value) {
     if (typeof authStore.fetchUser === 'function') {
       await authStore.fetchUser();
     } else if (typeof authStore.getMe === 'function') {
       await authStore.getMe();
-    } else {
-      console.warn('В authStore не найден метод обновления пользователя (fetchUser/getMe). Данные могут быть устаревшими до перезагрузки.');
     }
   } else {
-    // Если (теоретически) редактировали чужой профиль
     await fetchProfile();
   }
 };
@@ -86,18 +81,19 @@ onMounted(() => {
         :can-edit="isMyProfile"
         @user-updated="handleUserUpdated"
       ></ProfileHeader>
-      <div class="charts-row">
+      
+      <div class="charts-row" :class="{ 'single-col': !isMyProfile }">
         
         <div v-if="isMyProfile" class="card chart-card">
            <h3 class="chart-title">Salary Distribution</h3>
-           <div class="chart-content">
+           <div class="chart-box">
               <SalaryPiechart />
            </div>
         </div>
 
         <div class="card chart-card">
            <h3 class="chart-title">Activity Overview</h3>
-           <div class="chart-content placeholder-chart">
+           <div class="chart-box placeholder-chart">
               <div class="placeholder-bar" style="height: 40%"></div>
               <div class="placeholder-bar" style="height: 70%"></div>
               <div class="placeholder-bar" style="height: 50%"></div>
@@ -106,6 +102,7 @@ onMounted(() => {
               <div class="placeholder-bar" style="height: 60%"></div>
            </div>
         </div>
+        
       </div>
 
     </div>
@@ -144,16 +141,32 @@ onMounted(() => {
     border-color: #fca5a5;
 }
 
+/* --- СЕТКА ГРАФИКОВ --- */
 .charts-row {
   display: grid;
+  /* На мобильных устройствах элементы идут друг под другом (1 колонка) */
   grid-template-columns: 1fr; 
   gap: 20px;
 }
 
+@media (min-width: 768px) {
+  .charts-row {
+    /* На десктопе: 1 часть (33%) и 2 части (66%) */
+    grid-template-columns: 1fr 2fr; 
+  }
+
+  /* Если мы смотрим чужой профиль и графика зарплаты нет,
+     растягиваем оставшийся график на всю ширину */
+  .charts-row.single-col {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chart-card {
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
+  min-height: 450px; 
 }
 
 .chart-title {
@@ -163,23 +176,24 @@ onMounted(() => {
   color: #374151;
 }
 
-.chart-content {
-  flex: 1;
-  min-height: 300px;
+.chart-box {
+  flex: 1; 
+  position: relative; 
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .placeholder-chart {
-  display: flex;
-  align-items: flex-end;
+  align-items: flex-end; 
   justify-content: space-around;
   padding: 20px;
   background-color: #f9fafb;
   border-radius: 8px;
   border: 1px dashed #e5e7eb;
-  height: 300px;
+  box-sizing: border-box;
 }
 
 .placeholder-bar {
@@ -187,11 +201,5 @@ onMounted(() => {
   background-color: #e5e7eb;
   border-radius: 4px 4px 0 0;
   transition: height 0.3s;
-}
-
-@media (min-width: 768px) {
-  .charts-row {
-    grid-template-columns: 1fr 1fr; 
-  }
 }
 </style>

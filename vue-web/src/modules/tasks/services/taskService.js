@@ -1,10 +1,8 @@
 import api from '@/services/api'
 
 export default {
-  getUserTasks(page = 1, pageSize = 10) {
-    return api.get('/api/tasks/user', {
-      params: { page, pageSize }
-    })
+  getUserTasks(page = 1, pageSize = 10, filter = 'all') {
+    return api.get(`/api/tasks/user?page=${page}&pageSize=${pageSize}&filter=${filter}`);
   },
 
   getClubTasks(clubId, page = 1, pageSize = 10) {
@@ -30,7 +28,9 @@ export default {
   },
 
   updateTaskReceivers(taskId, receiverIds) {
-    return api.put(`/api/tasks/${taskId}/receivers`, { taskId, receiverIds });
+    return api.put(`/api/tasks/${taskId}/receivers`, {
+      newReceiverIds: receiverIds
+    });
   },
 
   deleteTask(clubId, taskId) {
@@ -61,5 +61,16 @@ export default {
 
   completeUserTask(userTaskId) {
     return api.put(`/api/tasks/${userTaskId}/complete`);
+  },
+
+  returnUserTask(userTaskId) {
+    return api.put(`/api/tasks/${userTaskId}/return`);
+  },
+
+  confirmUserTask(userTaskId, status, applyPenalty = false) {
+    return api.post(`/api/tasks/${userTaskId}/confirm`, {
+      taskStatus: status,
+      applyPenalty: applyPenalty
+    });
   }
 }

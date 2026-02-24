@@ -4,7 +4,7 @@
       <div class="header-left">
         <h2>Tasks</h2>
         
-        <div class="mode-toggle">
+        <div class="mode-toggle" v-if="canViewClubTasks">
           <button 
             class="mode-btn" 
             :class="{ active: viewMode === 'my' }" 
@@ -21,7 +21,7 @@
           </button>
         </div> 
         
-        <div v-if="viewMode === 'club' && userClubs.length > 0" class="club-selector">
+        <div v-if="viewMode === 'club' && canViewClubTasks && userClubs.length > 0" class="club-selector">
           <select v-model="selectedClubId" @change="onClubChange" class="club-select">
             <option v-for="club in userClubs" :key="club.clubId" :value="club.clubId">
               {{ club.clubName }}
@@ -49,18 +49,24 @@
       <div class="header-right"></div>
     </div>
 
-    <div class="tabs-header">
-      <button class="tab-btn" :class="{ active: activeTab === 'all' }" @click="activeTab = 'all'">
-        All <span v-if="tasks.length" class="counter-badge">{{ tasks.length }}</span>
+    <div class="tabs-header" v-if="viewMode === 'my'">
+      <button class="tab-btn" :class="{ active: activeTab === 'all' }" @click="setTab('all')">
+        All <span v-if="activeTab === 'all' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
       </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'in_progress' }" @click="activeTab = 'in_progress'">
-        In Progress <span v-if="inProgressCount" class="counter-badge">{{ inProgressCount }}</span>
+      <button class="tab-btn" :class="{ active: activeTab === 'pending' }" @click="setTab('pending')">
+        Pending <span v-if="activeTab === 'pending' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
       </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'completed' }" @click="activeTab = 'completed'">
-        Completed <span v-if="completedCount" class="counter-badge">{{ completedCount }}</span>
+      <button class="tab-btn" :class="{ active: activeTab === 'in_progress' }" @click="setTab('in_progress')">
+        In Progress <span v-if="activeTab === 'in_progress' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
       </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'failed' }" @click="activeTab = 'failed'">
-        Failed <span v-if="failedCount" class="counter-badge">{{ failedCount }}</span>
+      <button class="tab-btn" :class="{ active: activeTab === 'completed' }" @click="setTab('completed')">
+        Completed <span v-if="activeTab === 'completed' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'returned' }" @click="setTab('returned')">
+        Returned <span v-if="activeTab === 'returned' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'overdued' }" @click="setTab('overdued')">
+        Overdued <span v-if="activeTab === 'overdued' && totalItems > 0" class="counter-badge">{{ totalItems }}</span>
       </button>
     </div>
 
@@ -76,7 +82,7 @@
 
       <div v-else-if="filteredTasks.length === 0" class="empty-state">
         <div style="font-size: 3rem; margin-bottom: 1rem;">📭</div>
-        <p>No {{ activeTab.replace('_', ' ') }} tasks found.</p>
+        <p>No tasks found.</p>
       </div>
 
       <div v-else class="tasks-grid">
@@ -84,7 +90,9 @@
           v-for="task in filteredTasks" 
           :key="task.id" 
           :task="task" 
+          :hide-status="viewMode === 'club'" 
           @click="openTaskDetails(task.id)"
+          :class="{ 'task-faded': isTaskLessRelevant(task) }" 
         />
       </div>
 
@@ -146,20 +154,36 @@ const tasks = ref([])
 const isLoading = ref(false)
 const error = ref(null)
 const searchQuery = ref('')
-const activeTab = ref('all')
+const activeTab = ref('pending') 
 
 const viewMode = ref('my') 
 
-// Список клубов пользователя из стора авторизации
 const userClubs = computed(() => authStore.user?.clubDtos || [])
 const selectedClubId = ref(null)
 
+// НОВОЕ: Проверка прав пользователя на просмотр/создание задач клуба
+const canViewClubTasks = computed(() => {
+  const user = authStore.user;
+  if (!user) return false;
+  
+  // Если глобальный админ — может видеть всё
+  if (user.role === 'Admin' || user.Role === 'Admin') return true;
+  
+  // Ищем клубы, где юзер имеет руководящую роль. 
+  // (Добавьте нужные роли в этот массив, если они у вас называются иначе)
+  const allowedRoles = ['president', 'creator', 'coach'];
+  
+  return userClubs.value.some(club => {
+    const role = (club.role || club.Role || '').toLowerCase();
+    return allowedRoles.includes(role);
+  });
+})
+
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(5) // Вернул на 10 для удобства, можете изменить
 const totalItems = ref(0)
 const totalPages = computed(() => Math.ceil(totalItems.value / pageSize.value))
 
-// ВЫЧИСЛЕНИЕ ВИДИМЫХ СТРАНИЦ ДЛЯ ПАГИНАЦИИ (макс. 5 кнопок подряд)
 const visiblePages = computed(() => {
   const pages = [];
   const total = totalPages.value;
@@ -168,13 +192,8 @@ const visiblePages = computed(() => {
   let start = Math.max(1, current - 2);
   let end = Math.min(total, current + 2);
   
-  // Корректировка, если мы находимся в начале или в конце
-  if (current <= 2) {
-    end = Math.min(total, 5);
-  }
-  if (current >= total - 1) {
-    start = Math.max(1, total - 4);
-  }
+  if (current <= 2) end = Math.min(total, 5);
+  if (current >= total - 1) start = Math.max(1, total - 4);
   
   for (let i = start; i <= end; i++) {
     pages.push(i);
@@ -182,54 +201,13 @@ const visiblePages = computed(() => {
   return pages;
 })
 
-const priorityWeights = { 'Highest': 5, 'High': 4, 'Medium': 3, 'Low': 2, 'Lowest': 1, 'None': 0 }
-
-const inProgressCount = computed(() => tasks.value.filter(t => {
-  const status = t.taskStatus || t.myStatus || 'Uncompleted'
-  return status !== 'Completed' && status !== 'Failed'
-}).length)
-
-const completedCount = computed(() => tasks.value.filter(t => (t.taskStatus || t.myStatus) === 'Completed').length)
-const failedCount = computed(() => tasks.value.filter(t => (t.taskStatus || t.myStatus) === 'Failed').length)
-
 const filteredTasks = computed(() => {
   let result = [...tasks.value]
-
-  if (activeTab.value === 'in_progress') {
-    result = result.filter(t => {
-      const status = t.taskStatus || t.myStatus || 'Uncompleted'
-      return status !== 'Completed' && status !== 'Failed'
-    })
-  } else if (activeTab.value === 'completed') {
-    result = result.filter(t => (t.taskStatus || t.myStatus) === 'Completed')
-  } else if (activeTab.value === 'failed') {
-    result = result.filter(t => (t.taskStatus || t.myStatus) === 'Failed')
-  }
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(t => t.title?.toLowerCase().includes(query) || t.clubName?.toLowerCase().includes(query))
   }
-
-  result.sort((a, b) => {
-    const statusA = a.taskStatus || a.myStatus || 'Uncompleted'
-    const statusB = b.taskStatus || b.myStatus || 'Uncompleted'
-    
-    const isUncompletedA = (statusA !== 'Completed' && statusA !== 'Failed') ? 1 : 0
-    const isUncompletedB = (statusB !== 'Completed' && statusB !== 'Failed') ? 1 : 0
-
-    if (isUncompletedA !== isUncompletedB) return isUncompletedB - isUncompletedA 
-
-    const priorityA = priorityWeights[a.taskPriority] || 0
-    const priorityB = priorityWeights[b.taskPriority] || 0
-
-    if (priorityA !== priorityB) return priorityB - priorityA 
-
-    const dateA = a.schedule?.endDate ? new Date(a.schedule.endDate).getTime() : Infinity
-    const dateB = b.schedule?.endDate ? new Date(b.schedule.endDate).getTime() : Infinity
-
-    return dateA - dateB
-  })
 
   return result
 })
@@ -239,6 +217,12 @@ const setViewMode = (mode) => {
   viewMode.value = mode
   currentPage.value = 1
   activeTab.value = 'all'
+  fetchTasks()
+}
+
+const setTab = (tab) => {
+  activeTab.value = tab
+  currentPage.value = 1 
   fetchTasks()
 }
 
@@ -255,7 +239,7 @@ const fetchTasks = async () => {
     let response;
     
     if (viewMode.value === 'my') {
-      response = await tasksService.getUserTasks(currentPage.value, pageSize.value)
+      response = await tasksService.getUserTasks(currentPage.value, pageSize.value, activeTab.value)
     } else {
       if (!selectedClubId.value) {
         throw new Error("Please select a club first.")
@@ -265,8 +249,9 @@ const fetchTasks = async () => {
 
     const paginatedData = response.data?.value || response.data
     
-    tasks.value = paginatedData.items || []
-    totalItems.value = paginatedData.totalCount || 0
+    tasks.value = paginatedData.items || paginatedData.Items || []
+    totalItems.value = paginatedData.totalCount || paginatedData.TotalCount || 0
+    
   } catch (err) {
     if (err.response?.status === 403) {
       error.value = "You don't have permission to view this club's tasks."
@@ -301,11 +286,37 @@ const onTaskCreated = () => {
   fetchTasks()
 }
 
+
+const isTaskLessRelevant = (task) => {
+  // 1. Если задача уже выполнена, подтверждена или просрочена по статусу
+  if (task.status) {
+    const s = task.status.toLowerCase();
+    if (s === 'completed' || s === 'confirmed' || s === 'overdued') return true;
+  }
+  
+  // 2. Если дедлайн физически прошел (на случай Club Tasks, где мы не смотрим на статус конкретного юзера)
+  // В зависимости от вашего DTO дата может лежать в task.endDate или task.taskSchedule?.endDate
+  const targetDate = task.endDate || task.taskSchedule?.endDate; 
+  if (targetDate) {
+    const endDate = new Date(targetDate);
+    const now = new Date();
+    if (endDate < now) return true;
+  }
+  
+  return false;
+};
+
 onMounted(async () => {
+  // Дожидаемся загрузки пользователя, если его еще нет
+  if (!authStore.isAuthenticated) {
+    await authStore.checkAuth();
+  }
+
   const queryMode = route.query.mode;
   const queryClubId = route.query.clubId;
 
-  if (queryMode === 'club') {
+  // Если пытаются перейти на club mode через URL, но прав нет — принудительно переключаем на 'my'
+  if (queryMode === 'club' && canViewClubTasks.value) {
     viewMode.value = 'club';
     
     if (queryClubId && userClubs.value.some(c => c.clubId === queryClubId)) {
@@ -365,7 +376,6 @@ onMounted(async () => {
 .mode-btn:hover:not(.active) { color: #334155; }
 .mode-btn.active { background: white; color: var(--color-primary, #007bff); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
-/* Стили для выбора клуба */
 .club-selector {
   display: flex;
   align-items: center;
@@ -420,7 +430,6 @@ onMounted(async () => {
 .btn-retry { margin-top: 16px; padding: 10px 24px; background: var(--color-primary, #007bff); color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
 .btn-retry:hover { opacity: 0.9; }
 
-/* ОБНОВЛЕННЫЕ СТИЛИ ПАГИНАЦИИ */
 .pagination-footer { margin-top: 30px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 8px; }
 .page-numbers { display: flex; gap: 8px; }
 .page-btn { 
@@ -449,6 +458,19 @@ onMounted(async () => {
 }
 .btn-create:hover {
   opacity: 0.9;
+}
+
+/* Делаем неактуальные задачи полупрозрачными и слегка серыми */
+.task-faded {
+  opacity: 0.55;
+  filter: grayscale(40%);
+  transition: all 0.3s ease;
+}
+
+/* При наведении возвращаем яркость, чтобы удобно было читать детали */
+.task-faded:hover {
+  opacity: 0.95;
+  filter: grayscale(0%);
 }
 
 @media (max-width: 768px) {

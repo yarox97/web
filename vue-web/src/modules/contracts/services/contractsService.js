@@ -11,5 +11,9 @@ export const contractsService = {
   async getContractById(contractId) {
     const response = await api.get(`/api/contracts/${contractId}`);
     return response.data;
+  },
+
+  endContract(id) {
+    return api.put(`/api/contracts/end-contract/${id}`);
   }
 }

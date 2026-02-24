@@ -1,10 +1,10 @@
 <template>
   <div class="payload-content">
-    <h4 class="payload-title">Action Required</h4>
-    <p class="payload-text">
+    <h4 class="payload-title">No Action Required</h4>
+     <!-- <p class="payload-text"> 
       To complete this task, you will need to click: 
       <strong>"{{ btnText }}"</strong>
-    </p>
+    </p> -->
   </div>
 </template>
 

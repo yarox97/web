@@ -25,7 +25,12 @@
 
         <div class="admin-actions" v-if="canManageTask">
           <template v-if="!isEditing">
-            <button class="btn-action edit" @click="startEditing">
+            <button 
+              class="btn-action edit" 
+              @click="startEditing" 
+              :disabled="hasTaskStarted"
+              :title="hasTaskStarted ? 'Cannot edit a task that has already started' : 'Edit Task'"
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="16 3 21 8 8 21 3 21 3 16 16 3"></polygon></svg>
               Edit Task
             </button>
@@ -87,28 +92,29 @@
 
             <div v-if="isEditing" class="edit-schedule-grid">
               <div class="form-group">
-                <label>Start Date & Time</label>
+                <label>Date & Start Time</label>
                 <div class="input-group">
                   <input type="date" v-model="editForm.startDate" class="edit-input" />
                   <input type="time" v-model="editForm.startTime" class="edit-input" />
                 </div>
               </div>
               <div class="form-group">
-                <label>Deadline Date & Time</label>
+                <label>Deadline Time</label>
                 <div class="input-group">
-                  <input type="date" v-model="editForm.endDate" class="edit-input" />
                   <input type="time" v-model="editForm.endTime" class="edit-input" />
                 </div>
               </div>
               <div class="form-group full-width">
-                <label>Penalty for Failure</label>
+                <label>Penalty / Bonus</label>
                 <div class="input-group penalty-group">
                   <select v-model="editForm.penaltyType" class="edit-input">
-                    <option value="None">No Penalty</option>
-                    <option value="Amount">Fixed Amount ($)</option>
-                    <option value="Percent">Percentage (%)</option>
+                    <option value="None">None</option>
+                    <option value="ValueFine">Value Penalty ($)</option>
+                    <option value="PercentFine">Percent Penalty (%)</option>
+                    <option value="ValuePremia">Value Bonus ($)</option>
+                    <option value="PercentPremia">Percent Bonus (%)</option>
                   </select>
-                  <input v-if="editForm.penaltyType !== 'None'" type="number" v-model="editForm.penaltyAmount" class="edit-input" placeholder="Amount" />
+                  <input v-if="editForm.penaltyType !== 'None'" type="number" step="0.01" v-model="editForm.penaltyAmount" class="edit-input" placeholder="Amount / %" />
                 </div>
               </div>
             </div>
@@ -125,10 +131,10 @@
                 </div>
               </div>
 
-              <div class="progress-section">
+              <div class="progress-section" :style="{'--progress': timelineProgress + '%'}">
                 <div class="progress-track">
-                  <div class="progress-fill" :class="{'bg-danger': isOverdue}" :style="{ width: timelineProgress + '%' }"></div>
-                  <div v-if="timelineProgress > 0 && timelineProgress < 100" class="progress-thumb" :style="{ left: timelineProgress + '%' }"></div>
+                  <div class="progress-fill" :class="{'bg-danger': isOverdue}"></div>
+                  <div v-if="timelineProgress > 0 && timelineProgress < 100" class="progress-thumb"></div>
                 </div>
               </div>
 
@@ -147,13 +153,22 @@
               </div>
             </div>
 
-            <div v-if="!isEditing && taskData.task.penaltyType !== 'None'" class="penalty-banner">
-              <div class="penalty-icon">⚠️</div>
-              <div class="penalty-content">
-                <span class="penalty-label">Failure Penalty</span>
-                <span class="penalty-value">{{ taskData.task.penaltyAmount }}{{ taskData.task.penaltyType === 'Percent' ? '%' : '$' }}</span>
+            <div v-if="!isEditing && taskData.task.penaltyType !== 'None'" 
+                 class="financial-banner" 
+                 :class="isBonusType(taskData.task.penaltyType) ? 'bonus-banner' : 'penalty-banner'">
+                 
+              <div class="financial-icon">{{ isBonusType(taskData.task.penaltyType) ? '🎁' : '⚠️' }}</div>
+              
+              <div class="financial-content">
+                <span class="financial-label">
+                  {{ isBonusType(taskData.task.penaltyType) ? 'Completion Bonus' : 'Failure Penalty' }}
+                </span>
+                <span class="financial-value">
+                  {{ isBonusType(taskData.task.penaltyType) ? '+' : '-' }}{{ taskData.task.penaltyAmount }}{{ getFinancialSymbol(taskData.task.penaltyType) }}
+                </span>
               </div>
             </div>
+
           </div>
 
           <div class="card section-card">
@@ -202,8 +217,8 @@
             </div>
 
             <div class="receivers-list">
-              <div v-for="receiver in taskData.receivers" :key="receiver.userTaskId" 
-                class="receiver-list-item" @click="openUserResponse(receiver)">
+              <div v-for="receiver in paginatedReceivers" :key="receiver.userTaskId" 
+                class="receiver-list-item content-animate" @click="openUserResponse(receiver)">
                 
                 <img :src="getAvatar(receiver.fullName)" class="receiver-avatar" />
                 
@@ -217,14 +232,34 @@
                   </div>
                 </div>
 
-                <div class="receiver-status">
-                  <span class="status-indicator" :class="getStatusClass(receiver.taskStatus)"></span>
+                <div class="receiver-status" :class="getStatusClass(receiver.taskStatus)">
+                  <span class="status-indicator"></span>
                   <span class="status-label">{{ formatStatus(receiver.taskStatus) }}</span>
                 </div>
                 
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" class="chevron"><polyline points="9 18 15 12 9 6"></polyline></svg>
               </div>
+              
             </div>
+
+            <div v-if="receiversTotalPages > 1" class="receivers-pagination">
+              <button 
+                class="r-page-btn" 
+                :disabled="receiversCurrentPage === 1" 
+                @click="changeReceiversPage(receiversCurrentPage - 1)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <span class="r-page-info">{{ receiversCurrentPage }} / {{ receiversTotalPages }}</span>
+              <button 
+                class="r-page-btn" 
+                :disabled="receiversCurrentPage === receiversTotalPages" 
+                @click="changeReceiversPage(receiversCurrentPage + 1)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+            
           </div>
 
           <div class="card response-card" v-if="myTaskReceiverData">
@@ -343,30 +378,70 @@ const isSaving = ref(false);
 const selectedReceiver = ref(null);
 const fileInput = ref(null);
 
-// Форма редактирования таска
 const editForm = ref({
   title: '', description: '', taskPriority: '',
-  startDate: '', startTime: '', endDate: '', endTime: '',
+  startDate: '', startTime: '', endTime: '', 
   penaltyType: '', penaltyAmount: 0
 });
 
-// Состояние формы ответа
 const showResponseForm = ref(false);
 const isSubmittingResponse = ref(false);
-const isCompletingTask = ref(false); // Для загрузки кнопки "Mark as Completed"
+const isCompletingTask = ref(false); 
 const responseFileInput = ref(null);
 const responseForm = ref({
   text: '',
   files: []
 });
 
-// Проверка: является ли текущий юзер получателем этой задачи
+// === ЛОГИКА ПАГИНАЦИИ И СОРТИРОВКИ ПОЛУЧАТЕЛЕЙ ===
+const receiversCurrentPage = ref(1);
+const receiversPageSize = ref(5); // Количество получателей на одной странице (можно изменить)
+
+const sortedReceivers = computed(() => {
+  if (!taskData.value?.receivers) return [];
+  
+  return [...taskData.value.receivers].sort((a, b) => {
+    const isCompletedA = a.taskStatus === 'Completed' || a.taskStatus === 'Confirmed';
+    const isCompletedB = b.taskStatus === 'Completed' || b.taskStatus === 'Confirmed';
+    
+    // 1. Выполненные (Completed/Confirmed) поднимаем наверх
+    if (isCompletedA && !isCompletedB) return -1;
+    if (!isCompletedA && isCompletedB) return 1;
+    
+    // 2. Если оба выполнены, сортируем по дате выполнения (самые свежие сверху)
+    if (isCompletedA && isCompletedB) {
+      const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return dateB - dateA;
+    }
+    
+    // 3. Все остальные сортируются по алфавиту (имени)
+    return a.fullName.localeCompare(b.fullName);
+  });
+});
+
+const paginatedReceivers = computed(() => {
+  const start = (receiversCurrentPage.value - 1) * receiversPageSize.value;
+  const end = start + receiversPageSize.value;
+  return sortedReceivers.value.slice(start, end);
+});
+
+const receiversTotalPages = computed(() => {
+  return Math.ceil(sortedReceivers.value.length / receiversPageSize.value);
+});
+
+const changeReceiversPage = (page) => {
+  if (page >= 1 && page <= receiversTotalPages.value) {
+    receiversCurrentPage.value = page;
+  }
+};
+// ===============================================
+
 const myTaskReceiverData = computed(() => {
   if (!taskData.value || !taskData.value.receivers) return null;
   return taskData.value.receivers.find(r => String(r.userId).toLowerCase() === String(authStore.user?.id).toLowerCase());
 });
 
-// Вычисляем роль пользователя в клубе
 const myClubRole = computed(() => {
   const task = taskData.value?.task;
   const user = authStore.user;
@@ -380,7 +455,6 @@ const myClubRole = computed(() => {
   return clubMembership ? (clubMembership.role || clubMembership.Role) : null;
 });
 
-// Вычисляемые свойства доступа
 const canManageTask = computed(() => {
   const task = taskData.value?.task;
   const user = authStore.user;
@@ -401,7 +475,6 @@ const isSingleReceiver = computed(() => {
   return taskData.value.receivers.length === 1 && String(taskData.value.receivers[0].userId).toLowerCase() === String(authStore.user.id).toLowerCase();
 });
 
-// Вспомогательная функция для склеивания даты и времени
 const getFullDateTime = (dateStr, timeStr) => {
   if (!dateStr) return null;
   const date = new Date(dateStr);
@@ -420,6 +493,14 @@ const isOverdue = computed(() => {
   const endTimestamp = getFullDateTime(schedule.endDate, schedule.endTime);
   const now = new Date().getTime();
   return now > endTimestamp;
+});
+
+const hasTaskStarted = computed(() => {
+  const schedule = taskData.value?.task?.schedule;
+  if (!schedule || !schedule.startDate) return false;
+  const startTimestamp = getFullDateTime(schedule.startDate, schedule.startTime);
+  const now = new Date().getTime();
+  return now >= startTimestamp;
 });
 
 const timelineProgress = computed(() => {
@@ -458,7 +539,6 @@ const startEditing = () => {
     taskPriority: t.taskPriority,
     startDate: extractDate(t.schedule.startDate),
     startTime: extractTime(t.schedule.startTime),
-    endDate: extractDate(t.schedule.endDate),
     endTime: extractTime(t.schedule.endTime),
     penaltyType: t.penaltyType,
     penaltyAmount: t.penaltyAmount || 0
@@ -466,25 +546,49 @@ const startEditing = () => {
   isEditing.value = true;
 };
 
+const formatAsUtc = (dateStr) => {
+  if (!dateStr) return null;
+  return new Date(`${dateStr}T00:00:00Z`).toISOString();
+};
+
 const saveChanges = async () => {
   isSaving.value = true;
   try {
-    const payload = {
+    const currentPayload = parsedPayload.value || {};
+
+    const payloadData = {
+      taskId: taskId,
+      requestorId: authStore.user?.id, 
       title: editForm.value.title,
       description: editForm.value.description,
+      taskType: taskData.value.task.taskType, 
       taskPriority: editForm.value.taskPriority,
-      startDate: editForm.value.startDate,
-      endDate: editForm.value.endDate || null,
+      penaltyType: editForm.value.penaltyType,
+      penaltyAmount: editForm.value.penaltyType !== 'None' ? editForm.value.penaltyAmount : null,
+
+      startDate: formatAsUtc(editForm.value.startDate),
+      endDate: formatAsUtc(editForm.value.startDate), 
       startTime: editForm.value.startTime + ':00', 
       endTime: editForm.value.endTime ? editForm.value.endTime + ':00' : null,
-      penaltyType: editForm.value.penaltyType,
-      penaltyAmount: editForm.value.penaltyType !== 'None' ? editForm.value.penaltyAmount : null
+      
+      daysOfWeek: taskData.value.task.schedule.daysOfWeek || [],
+
+      confirmationButtonText: currentPayload.ConfirmationButtonText || null,
+      opponentName: currentPayload.OpponentName || null,
+      isHomeGame: currentPayload.IsHomeGame || null,
+      hallAddress: currentPayload.HallAddress || null,
+      gatheringTime: currentPayload.GatheringTime || null,
+      departureTime: currentPayload.DepartureTime || null,
+      googleMapsLink: currentPayload.GoogleMapsLink || null,
+      surveyURL: currentPayload.SurveyURL || null
     };
-    await tasksService.updateTaskDetails(taskId, payload);
+
+    await tasksService.updateTaskDetails(taskId, payloadData);
     await fetchTaskDetails(); 
     isEditing.value = false;
   } catch (e) {
-    alert("Failed to update task details");
+    console.error(e);
+    alert(e.response?.data?.message || "Failed to update task details");
   } finally {
     isSaving.value = false;
   }
@@ -513,14 +617,12 @@ const handleFileUpload = async (e) => {
   }
 };
 
-// --- ACTIONS (USER RESPONSE) ---
 const triggerResponseFileInput = () => responseFileInput.value.click();
 
 const handleResponseFileUpload = (e) => {
   responseForm.value.files = Array.from(e.target.files);
 };
 
-// Кнопка Submit Response (Форма с текстом/файлами)
 const submitMyResponse = async () => {
   isSubmittingResponse.value = true;
   try {
@@ -536,7 +638,6 @@ const submitMyResponse = async () => {
   }
 };
 
-// Кнопка быстрого завершения задачи (Дергает [HttpPut("{userTaskId}/complete")])
 const completeMyTask = async () => {
   const userTaskId = myTaskReceiverData.value?.userTaskId;
   if (!userTaskId) return;
@@ -553,8 +654,9 @@ const completeMyTask = async () => {
   }
 };
 
+const isBonusType = (type) => ['ValuePremia', 'PercentPremia'].includes(type);
+const getFinancialSymbol = (type) => ['PercentFine', 'PercentPremia'].includes(type) ? '%' : '$';
 
-// --- UTILS ---
 const onReceiversUpdated = () => {
     isEditingReceivers.value = false;
     fetchTaskDetails();
@@ -565,6 +667,7 @@ const fetchTaskDetails = async () => {
   try {
     const res = await api.get(`/api/tasks/${taskId}`);
     taskData.value = res.data?.value || res.data;
+    receiversCurrentPage.value = 1; // Сбрасываем страницу пагинации при обновлении данных
   } catch (err) {
     error.value = "Task not found or access denied.";
   } finally {
@@ -596,9 +699,12 @@ const getPriorityClass = (p) => {
 };
 
 const getStatusClass = (s) => {
-  if(s === 'Completed') return 'status-success';
-  if(s === 'Failed') return 'status-danger';
-  return 'status-warning';
+  const status = String(s).toLowerCase();
+  if(status === 'completed') return 'status-success';
+  if(status === 'confirmed') return 'status-confirmed'; // Новый статус
+  if(status === 'failed' || status === 'overdued') return 'status-danger';
+  if(status === 'returned') return 'status-returned'; // Новый статус
+  return 'status-warning'; // По умолчанию для Uncompleted/Pending
 };
 
 const formatStatus = (s) => s === 'Uncompleted' ? 'Pending' : s;
@@ -612,40 +718,80 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* PAGE & LAYOUT */
+/* ПЕРЕМЕННЫЕ И БАЗОВЫЕ СТИЛИ */
 .page-container { 
-  padding: 30px; 
+  padding: clamp(15px, 4vw, 30px); 
   width: 100%;       
   box-sizing: border-box; 
-  color: #1e293b; 
+  color: #334155; /* Чуть мягче чем черный */
   font-family: 'Inter', system-ui, sans-serif; 
   min-height: calc(100vh - 80px); 
   background: #f8fafc;
 }
-.layout-grid { display: flex; gap: 30px; align-items: flex-start; }
-.main-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
-/* SIDE COLUMN УВЕЛИЧЕН */
-.side-column { width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px; }
 
-@media (max-width: 1024px) {
-  .layout-grid { flex-direction: column; }
-  .side-column { width: 100%; }
+/* СЕТКА СТРАНИЦЫ */
+.layout-grid { 
+  display: flex; 
+  gap: clamp(15px, 3vw, 30px); 
+  align-items: flex-start; 
 }
 
-/* CARDS */
-.card { background: white; border-radius: 16px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-.header-card { border-top: 4px solid var(--color-primary, #007bff); padding-bottom: 30px; }
+.main-column { 
+  flex: 1; 
+  min-width: 0; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 20px; 
+}
+
+.side-column { 
+  width: 400px; 
+  max-width: 100%; 
+  flex-shrink: 0; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 20px; 
+}
+
+/* КАРТОЧКИ */
+.card { 
+  background: white; 
+  border-radius: 16px; 
+  border: 1px solid #e2e8f0; 
+  padding: clamp(16px, 3vw, 24px); 
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Тень стала мягче */
+}
+.header-card { border-top: 4px solid var(--color-primary, #007bff); }
 .section-card { margin-top: 0; }
 
-/* HEADER & ACTIONS */
-.nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.btn-back { display: flex; align-items: center; gap: 8px; background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-.btn-back:hover { background: #f1f5f9; color: #0f172a; }
+/* НАВИГАЦИЯ И КНОПКИ */
+.nav-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 24px; 
+  gap: 15px;
+  flex-wrap: wrap; 
+}
 
-.admin-actions { display: flex; gap: 10px; }
-.btn-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; border: none; }
+.btn-back { 
+  display: flex; align-items: center; gap: 8px; background: white; 
+  border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; 
+  font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; 
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05); white-space: nowrap;
+}
+.btn-back:hover { background: #f8fafc; color: #0f172a; }
+
+.admin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn-action { 
+  display: flex; align-items: center; justify-content: center; 
+  gap: 6px; padding: 10px 16px; border-radius: 8px; font-weight: 600; 
+  font-size: 0.9rem; cursor: pointer; transition: all 0.2s; border: none; white-space: nowrap;
+}
 .btn-action.edit { background: #f1f5f9; color: var(--color-primary, #007bff); }
-.btn-action.edit:hover { background: #e2e8f0; }
+.btn-action.edit:hover:not(:disabled) { background: #e2e8f0; }
+.btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-action.delete { background: #fef2f2; color: #ef4444; }
 .btn-action.delete:hover { background: #fee2e2; }
 .btn-action.save { background: var(--color-primary, #007bff); color: white; }
@@ -653,32 +799,37 @@ onMounted(async () => {
 .btn-action.cancel { background: white; border: 1px solid #e2e8f0; color: #64748b; }
 
 /* BADGES & TAGS */
-.badges-row { display: flex; gap: 10px; margin-bottom: 15px; }
-.badge { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-.type-badge { background: #f1f5f9; color: #475569; }
-.danger-badge { background: #fef2f2; color: #ef4444; }
-.warning-badge { background: #fffbeb; color: #d97706; }
-.success-badge { background: #f0fdf4; color: #16a34a; }
+.badges-row { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+.badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.type-badge { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.danger-badge { background: #fff1f2; color: #e11d48; border: 1px solid #ffe4e6; }
+.warning-badge { background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; }
+.success-badge { background: #f0fdf4; color: #15803d; border: 1px solid #dcfce7; }
 .default-badge { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 
-/* TASK MAIN INFO */
+/* ТИПОГРАФИКА */
 .title-container { margin-bottom: 16px; }
-.task-title { font-size: 2.2rem; font-weight: 800; color: #0f172a; margin: 0; line-height: 1.2; letter-spacing: -0.5px; }
+.task-title { 
+  font-size: clamp(1.5rem, 5vw, 2.2rem); 
+  font-weight: 800; color: #0f172a; margin: 0; line-height: 1.2; 
+  letter-spacing: -0.5px; word-break: break-word;
+}
 .task-meta { display: flex; align-items: center; gap: 16px; color: #64748b; font-size: 0.95rem; flex-wrap: wrap; }
 .meta-item { display: flex; align-items: center; gap: 6px; }
 
 /* SECTION HEADERS */
-.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
 .section-title { font-size: 1.2rem; font-weight: 700; color: #0f172a; margin: 0; }
-.btn-secondary-small { background: white; border: 1px dashed #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; }
-.btn-secondary-small:hover { background: #f1f5f9; border-color: #94a3b8; }
+.btn-secondary-small { background: white; border: 1px dashed #cbd5e1; padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.btn-secondary-small:hover { background: #f8fafc; border-color: #94a3b8; }
 
-/* TIMELINE WIDGET */
-.timeline-widget { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 10px; }
-.time-block { display: flex; align-items: center; gap: 16px; min-width: 140px; }
+
+/* ВИДЖЕТ ТАЙМЛАЙНА */
+.timeline-widget { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: clamp(16px, 2vw, 20px); margin-top: 10px; flex-wrap: wrap; gap: 15px;}
+.time-block { display: flex; align-items: center; gap: 16px; min-width: 140px; z-index: 2; }
 .align-right { flex-direction: row-reverse; text-align: right; }
 
-.icon-circle { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.icon-circle { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .start-icon { color: var(--color-primary, #007bff); border: 2px solid #e0f2fe; }
 .end-icon { color: #64748b; border: 2px solid #e2e8f0; }
 .end-icon.danger-icon { color: #ef4444; border-color: #fee2e2; }
@@ -690,32 +841,28 @@ onMounted(async () => {
 .is-overdue .date, .is-overdue .time { color: #ef4444; }
 .text-muted { color: #94a3b8; font-style: italic; font-weight: 500; }
 
-.progress-section { flex: 1; margin: 0 24px; position: relative; }
-.progress-track { height: 8px; background: #e2e8f0; border-radius: 4px; position: relative; }
-.progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--color-primary, #007bff); border-radius: 4px; transition: width 0.3s ease; }
+.progress-section { flex: 1; margin: 0 16px; position: relative; min-width: 100px; }
+.progress-track { height: 8px; width: 100%; background: #e2e8f0; border-radius: 4px; position: relative; }
+.progress-fill { position: absolute; left: 0; top: 0; height: 100%; width: var(--progress); background: var(--color-primary, #007bff); border-radius: 4px; transition: all 0.3s ease; }
 .progress-fill.bg-danger { background: #ef4444; }
-.progress-thumb { 
-  position: absolute; 
-  top: 50%; 
-  transform: translateY(-50%); /* Убрали translateX, чтобы left работал точно от края */
-  margin-left: -8px; /* Центрируем ползунок относительно своего 'left' */
-  width: 16px; 
-  height: 16px; 
-  background: white; 
-  border: 4px solid var(--color-primary, #007bff); 
-  border-radius: 50%; 
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
-  transition: left 0.3s ease; 
-}
+.progress-thumb { position: absolute; top: 50%; left: var(--progress); transform: translate(-50%, -50%); width: 16px; height: 16px; background: white; border: 4px solid var(--color-primary, #007bff); border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.3s ease; }
 
-/* PENALTY */
-.penalty-banner { display: flex; align-items: center; gap: 12px; background: #fff1f2; border: 1px dashed #fecaca; padding: 16px 20px; border-radius: 12px; margin-top: 16px; }
-.penalty-icon { font-size: 1.2rem; }
-.penalty-content { display: flex; flex-direction: column; }
-.penalty-label { font-size: 0.8rem; font-weight: 600; color: #9f1239; text-transform: uppercase; }
-.penalty-value { font-size: 1.1rem; font-weight: 800; color: #e11d48; }
 
-/* EDIT FORM GRIDS */
+/* ФИНАНСЫ (ПЕНАЛЬТИ / БОНУС) */
+.financial-banner { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-radius: 12px; margin-top: 16px; border: 1px dashed; flex-wrap: wrap;}
+.penalty-banner { background: #fff1f2; border-color: #fecaca; }
+.bonus-banner { background: #f0fdf4; border-color: #bbf7d0; }
+
+.financial-icon { font-size: 1.2rem; flex-shrink: 0;}
+.financial-content { display: flex; flex-direction: column; }
+.financial-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
+.penalty-banner .financial-label { color: #9f1239; }
+.bonus-banner .financial-label { color: #166534; }
+.financial-value { font-size: 1.1rem; font-weight: 800; }
+.penalty-banner .financial-value { color: #e11d48; }
+.bonus-banner .financial-value { color: #16a34a; }
+
+/* ФОРМА РЕДАКТИРОВАНИЯ */
 .edit-schedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; }
 .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 8px; }
 .input-group { display: flex; gap: 10px; }
@@ -724,15 +871,15 @@ onMounted(async () => {
 
 .edit-input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; font-family: inherit; outline: none; transition: border-color 0.2s; box-sizing: border-box; background: white; }
 .edit-input:focus { border-color: var(--color-primary, #007bff); box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
-.title-edit { font-size: 2rem; font-weight: 800; padding: 8px 12px; }
+.title-edit { font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 800; padding: 12px; }
 .desc-textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
-.priority-select { width: auto; padding: 4px 12px; font-weight: 600; }
+.priority-select { width: auto; padding: 6px 12px; font-weight: 600; }
 
-/* DESCRIPTION & TEXT */
-.text-body { font-size: 1.05rem; color: #334155; line-height: 1.6; white-space: pre-wrap; }
+/* ОПИСАНИЕ */
+.text-body { font-size: 1.05rem; color: #334155; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; }
 .payload-box { margin-top: 24px; padding-top: 24px; border-top: 1px dashed #e2e8f0; }
 
-/* RESPONSE FORM (SIDEBAR SPECIFIC) */
+/* ОТВЕТ ПОЛЬЗОВАТЕЛЯ */
 .response-card { border-top: 4px solid #10b981; }
 .respond-prompt { text-align: center; padding: 10px 0; }
 .mb-3 { margin-bottom: 12px; }
@@ -751,9 +898,9 @@ onMounted(async () => {
 
 .response-form { display: flex; flex-direction: column; gap: 15px; }
 .response-actions-sidebar { display: flex; flex-direction: column; gap: 12px; margin-top: 5px; }
-.file-upload-wrapper { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px dashed #e2e8f0; }
+.file-upload-wrapper { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px dashed #e2e8f0; flex-wrap: wrap; gap: 10px;}
 .file-count { font-size: 0.85rem; color: var(--color-primary, #007bff); font-weight: 600; }
-.action-buttons-full { display: flex; gap: 10px; width: 100%; }
+.action-buttons-full { display: flex; gap: 10px; width: 100%; flex-wrap: wrap; }
 
 .btn-primary { background: var(--color-primary, #007bff); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
 .btn-primary:hover { opacity: 0.9; }
@@ -767,8 +914,8 @@ onMounted(async () => {
 .success-icon { background: #22c55e; color: white; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; }
 .success-text { display: flex; flex-direction: column; gap: 4px; }
 
-/* ATTACHMENTS */
-.attachments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+/* ВЛОЖЕНИЯ */
+.attachments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .attachment-card { display: flex; align-items: center; gap: 16px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; text-decoration: none; color: inherit; transition: all 0.2s; }
 .attachment-card:hover { border-color: #cbd5e1; background: #f1f5f9; transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .att-icon { color: var(--color-primary, #007bff); background: white; padding: 10px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
@@ -777,32 +924,112 @@ onMounted(async () => {
 .att-size { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
 .empty-state { padding: 24px; text-align: center; color: #94a3b8; font-size: 0.95rem; font-style: italic; background: #f8fafc; border-radius: 12px; border: 1px dashed #e2e8f0; }
 
-/* RECEIVERS SIDEBAR */
+/* ПОЛУЧАТЕЛИ */
 .receivers-list { display: flex; flex-direction: column; gap: 12px; }
 .receiver-list-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
 .receiver-list-item:hover { border-color: var(--color-primary, #007bff); background: #f0f7ff; transform: translateX(4px); }
-.receiver-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.receiver-avatar { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; object-fit: cover; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .receiver-details { flex: 1; overflow: hidden; }
 .receiver-name { font-size: 1rem; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .receiver-completed-date { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
-.receiver-status { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: white; border-radius: 20px; border: 1px solid #e2e8f0; }
-.status-indicator { width: 8px; height: 8px; border-radius: 50%; }
-.status-label { font-size: 0.8rem; font-weight: 600; color: #475569; }
-.status-success { background: #10b981; }
-.status-danger { background: #ef4444; }
-.status-warning { background: #f59e0b; }
+
+/* === НОВЫЕ ПАСТЕЛЬНЫЕ СТАТУСЫ === */
+/* Контейнер статуса */
+.receiver-status { 
+  display: flex; align-items: center; gap: 6px; 
+  padding: 4px 10px; border-radius: 20px; border: 1px solid; 
+  white-space: nowrap; font-weight: 600; font-size: 0.8rem;
+}
+.status-indicator { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ЦВЕТОВЫЕ СХЕМЫ (Soft UI) */
+
+/* Success (Completed) - Пастельный зеленый */
+.status-success { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.status-success .status-indicator { background: #10b981; }
+
+/* Danger (Failed/Overdue) - Пастельный красный */
+.status-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.status-danger .status-indicator { background: #ef4444; }
+
+/* Warning (Pending/Uncompleted) - Пастельный желтый/янтарный */
+.status-warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.status-warning .status-indicator { background: #f59e0b; }
+
+/* Returned - Пастельный оранжевый */
+.status-returned { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.status-returned .status-indicator { background: #f97316; }
+
+/* Confirmed - Пастельный фиолетовый */
+.status-confirmed { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.status-confirmed .status-indicator { background: #8b5cf6; }
+
+/* ПАГИНАЦИЯ ПОЛУЧАТЕЛЕЙ */
+.receivers-pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+.r-page-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; color: #475569; cursor: pointer; transition: all 0.2s; }
+.r-page-btn:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+.r-page-btn:disabled { opacity: 0.5; cursor: not-allowed; background: #f8fafc; }
+.r-page-info { font-size: 0.85rem; font-weight: 600; color: #64748b; }
+
 
 .state-box { min-height: 400px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .error-icon { color: #ef4444; margin-bottom: 16px; }
 .content-animate { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-@media (max-width: 600px) {
-  .timeline-widget { flex-direction: column; align-items: flex-start; gap: 20px; }
-  .progress-section { display: none; }
+/* === АДАПТИВНОСТЬ (МЕДИА-ЗАПРОСЫ) === */
+
+/* Планшеты и маленькие ноутбуки */
+@media (max-width: 1024px) {
+  .layout-grid { flex-direction: column; }
+  .side-column { width: 100%; }
+}
+
+/* Мобильные устройства */
+@media (max-width: 640px) {
+  .nav-header { flex-direction: column; align-items: flex-start; }
+  .admin-actions { width: 100%; }
+  .btn-action { flex: 1; }
+  
+  /* ИЗМЕНЕННЫЙ БЛОК: Скрываем прогресс бар, оставляем блоки дат как карточки */
+  .timeline-widget { 
+    flex-direction: column; 
+    align-items: stretch; 
+    gap: 12px; 
+    background: transparent; /* Убираем фон общего контейнера */
+    border: none;
+    padding: 0;
+  }
+  
+  .time-block { 
+    width: 100%; 
+    background: #f8fafc; 
+    border: 1px solid #e2e8f0; 
+    border-radius: 12px; 
+    padding: 16px; 
+    box-sizing: border-box;
+  }
+  
+  /* Возвращаем иконку дедлайна обратно влево */
   .time-block.align-right { flex-direction: row; text-align: left; }
+  
+  /* Полностью скрываем полосу прогресса */
+  .progress-section { display: none; }
+  
   .edit-schedule-grid { grid-template-columns: 1fr; }
   .input-group { flex-direction: column; }
+  .penalty-group { flex-direction: column; max-width: 100%; }
+}
+
+/* Очень маленькие экраны (Телефоны вертикально) */
+@media (max-width: 480px) {
+  .badges-row { flex-direction: column; align-items: flex-start; }
+  
+  .receiver-list-item { padding: 12px; gap: 10px; }
+  .receiver-status { padding: 4px; }
+  .status-label { display: none; }
+  
   .action-buttons-full { flex-direction: column; }
+  .btn-ghost, .btn-action.save { width: 100%; }
 }
 </style>

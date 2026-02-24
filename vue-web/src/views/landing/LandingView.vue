@@ -1,8 +1,16 @@
 <script setup>
+  import { onMounted } from 'vue'
   import { useRouter } from 'vue-router'
+  import { useAuthStore } from '@/stores/authStore' // Импортируем ваш стор
   import headerBg from '@/views/landing/img/header/bg.jpg' 
 
   const router = useRouter();
+  const authStore = useAuthStore();
+
+  // Проверяем статус при загрузке лендинга
+  onMounted(async () => {
+
+  });
 
   const goToLogin = () => {
     router.push({name: 'login'})

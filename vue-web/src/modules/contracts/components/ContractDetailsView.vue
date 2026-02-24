@@ -1,36 +1,111 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { contractsService } from '../services/contractsService';
+import payslipsService from '@/modules/payslips/services/payslipService'; 
 import { formatDate } from '@/utils/dateFormater';
 import Spinner from '@/components/shared/Spinner.vue';
 
 const route = useRoute();
 const router = useRouter();
 
+// Contract Data
 const contract = ref(null);
-const isLoading = ref(true);
-const error = ref(null);
+const isContractLoading = ref(true);
+const contractError = ref(null);
+const isEnding = ref(false); // Состояние загрузки для кнопки завершения
+
+// Payslips Data
+const payslips = ref([]);
+const payslipsTotal = ref(0);
+const payslipsPage = ref(1);
+const payslipsPageSize = ref(5);
+const isPayslipsLoading = ref(false);
 
 const formatCurrency = (amount, currency) => {
   if (amount === null || amount === undefined) return 'N/A';
+  const currCode = currency !== undefined ? currency : (contract.value?.currency || 0);
   const symbols = { 0: '$', 1: '€', 2: 'zł' };
-  return `${symbols[currency] || ''} ${amount.toLocaleString()}`;
+  return `${symbols[currCode] || ''} ${Number(amount).toLocaleString()}`;
 };
 
+const getMonthName = (monthNum) => {
+  const date = new Date();
+  date.setMonth(monthNum - 1);
+  return date.toLocaleString('en-US', { month: 'long' });
+};
+
+// --- DATA FETCHING ---
+
 const fetchContractDetails = async () => {
-  isLoading.value = true;
+  isContractLoading.value = true;
   try {
     const data = await contractsService.getContractById(route.params.id);
     contract.value = data;
   } catch (err) {
-    error.value = "Failed to load contract details. It may not exist or you don't have permission.";
+    contractError.value = "Failed to load contract details.";
   } finally {
-    isLoading.value = false;
+    isContractLoading.value = false;
   }
 };
 
-onMounted(fetchContractDetails);
+const fetchPayslips = async () => {
+  isPayslipsLoading.value = true;
+  try {
+    const response = await payslipsService.getContractPayslips(
+      route.params.id, 
+      payslipsPage.value, 
+      payslipsPageSize.value
+    );
+    
+    const data = response.data?.value || response.data;
+    
+    payslips.value = data.items || [];
+    payslipsTotal.value = data.totalCount || 0;
+  } catch (err) {
+    console.error("Failed to load payslips", err);
+  } finally {
+    isPayslipsLoading.value = false;
+  }
+};
+
+// --- ACTIONS ---
+
+const endContract = async () => {
+  if (!confirm("Are you sure you want to end this contract? This action cannot be undone.")) return;
+  
+  isEnding.value = true;
+  try {
+    await contractsService.endContract(route.params.id);
+    await fetchContractDetails(); // Обновляем данные, статус должен измениться на Archived
+  } catch (err) {
+    console.error(err);
+    alert(err.response?.data?.message || "Failed to end contract");
+  } finally {
+    isEnding.value = false;
+  }
+};
+
+const changePayslipPage = (newPage) => {
+  const totalPages = Math.ceil(payslipsTotal.value / payslipsPageSize.value);
+  if (newPage < 1 || newPage > totalPages) return;
+  payslipsPage.value = newPage;
+  fetchPayslips();
+};
+
+const totalPayslipPages = computed(() => Math.ceil(payslipsTotal.value / payslipsPageSize.value));
+
+const getPayslipStatusClass = (status) => {
+  const s = String(status).toLowerCase();
+  if (s === 'paid' || s === 'confirmed') return 'status-success';
+  if (s === 'pending' || s === 'generated') return 'status-warning';
+  return 'status-danger';
+};
+
+onMounted(() => {
+  fetchContractDetails();
+  fetchPayslips();
+});
 </script>
 
 <template>
@@ -41,6 +116,15 @@ onMounted(fetchContractDetails);
         <h2>Contract #{{ route.params.id.slice(0, 8) }}</h2>
       </div>
       <div class="header-right">
+        <button 
+          v-if="contract?.isActive" 
+          class="btn-danger-outline" 
+          @click="endContract" 
+          :disabled="isEnding"
+        >
+          {{ isEnding ? 'Processing...' : 'End Contract' }}
+        </button>
+        
         <div v-if="contract" class="status-badge" :class="contract.isActive ? 'status-active' : 'status-expired'">
           {{ contract.isActive ? 'Active' : 'Archived' }}
         </div>
@@ -48,12 +132,12 @@ onMounted(fetchContractDetails);
     </div>
 
     <div class="details-view">
-      <div v-if="isLoading" class="loading-state">
+      <div v-if="isContractLoading" class="loading-state">
         <Spinner />
       </div>
 
-      <div v-else-if="error" class="empty-state">
-        <p class="error-text">{{ error }}</p>
+      <div v-else-if="contractError" class="empty-state">
+        <p class="error-text">{{ contractError }}</p>
         <button class="club-button join-btn" @click="fetchContractDetails">Retry</button>
       </div>
 
@@ -112,6 +196,72 @@ onMounted(fetchContractDetails);
               </div>
             </div>
           </div>
+
+          <div class="detail-section full-width-section">
+            <div class="section-title">Payslip History</div>
+            
+            <div class="section-body">
+              <div v-if="isPayslipsLoading" class="mini-loader">
+                <Spinner />
+              </div>
+              
+              <div v-else-if="payslips.length === 0" class="empty-list">
+                No payslips generated for this contract yet.
+              </div>
+
+              <div v-else class="payslips-table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Period</th>
+                      <th>Base Salary</th>
+                      <th>Total Amount</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="slip in payslips" :key="slip.id">
+                      <td>
+                        <span class="period-text">{{ getMonthName(slip.month) }} {{ slip.year }}</span>
+                      </td>
+                      <td class="text-muted">{{ formatCurrency(slip.baseSalary) }}</td>
+                      <td class="amount-cell">{{ formatCurrency(slip.totalAmount) }}</td>
+                      <td>
+                        <span class="status-badge-small" :class="getPayslipStatusClass(slip.status)">
+                          {{ slip.status }}
+                        </span>
+                      </td>
+                      <td>
+                        <button class="btn-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="pagination-footer" v-if="totalPayslipPages > 1">
+                  <button 
+                    class="page-btn" 
+                    :disabled="payslipsPage === 1" 
+                    @click="changePayslipPage(payslipsPage - 1)"
+                  >
+                    ←
+                  </button>
+                  <span class="page-info">Page {{ payslipsPage }} of {{ totalPayslipPages }}</span>
+                  <button 
+                    class="page-btn" 
+                    :disabled="payslipsPage === totalPayslipPages" 
+                    @click="changePayslipPage(payslipsPage + 1)"
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -138,6 +288,17 @@ onMounted(fetchContractDetails);
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
 .back-btn {
   background: none;
   border: none;
@@ -145,6 +306,29 @@ onMounted(fetchContractDetails);
   cursor: pointer;
   font-weight: 600;
   margin-right: 15px;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #fca5a5;
+  color: #ef4444;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.btn-danger-outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .details-view {
@@ -240,6 +424,10 @@ onMounted(fetchContractDetails);
   letter-spacing: 0.5px;
 }
 
+.section-body {
+  padding: 20px 30px;
+}
+
 .section-body.horizontal {
   padding: 30px;
   display: flex;
@@ -288,6 +476,7 @@ onMounted(fetchContractDetails);
   font-weight: 700;
   font-size: 0.9rem;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .status-active { background: #dcfce7; color: #15803d; }
@@ -299,6 +488,124 @@ onMounted(fetchContractDetails);
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+/* --- Payslips Table Styles --- */
+.mini-loader {
+  display: flex;
+  justify-content: center;
+  padding: 30px;
+}
+
+.empty-list {
+  text-align: center;
+  color: #94a3b8;
+  padding: 20px;
+  font-style: italic;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 12px 10px;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.data-table td {
+  padding: 16px 10px;
+  font-size: 0.95rem;
+  color: #334155;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.period-text {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.text-muted {
+  color: #94a3b8;
+}
+
+.amount-cell {
+  font-weight: 700;
+  color: var(--blue, #4B9BD4);
+}
+
+.status-badge-small {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Status colors (Soft UI) */
+.status-success { background: #ecfdf5; color: #047857; }
+.status-warning { background: #fffbeb; color: #b45309; }
+.status-danger { background: #fef2f2; color: #b91c1c; }
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.btn-icon:hover {
+  background: #f1f5f9;
+  color: var(--blue, #4B9BD4);
+}
+
+/* Pagination */
+.pagination-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.page-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: var(--blue, #4B9BD4);
+  color: var(--blue, #4B9BD4);
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.page-info {
+  font-size: 0.9rem;
+  color: #64748b;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {
@@ -314,5 +621,13 @@ onMounted(fetchContractDetails);
     align-items: flex-start;
   }
   .separator { display: none; }
+  
+  /* Make table scrollable on small screens */
+  .payslips-table-wrapper {
+    overflow-x: auto;
+  }
+  .data-table th, .data-table td {
+    white-space: nowrap;
+  }
 }
 </style>

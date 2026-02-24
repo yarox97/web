@@ -28,6 +28,6 @@ const props = defineProps({ payload: Object })
 const router = useRouter()
 
 const viewContract = () => {
-  router.push({ name: 'MyContracts', query: { clubId: props.payload.ClubId } })
+  router.push({ name: 'contracts', params: { id: props.payload.ContractId } })
 }
 </script>

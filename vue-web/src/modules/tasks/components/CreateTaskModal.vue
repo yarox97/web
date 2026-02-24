@@ -36,7 +36,7 @@
             </div>
 
             <div class="form-group">
-              <label>Description <span class="optional-tag">(Optional)</span></label>
+              <label>Description *</label>
               <textarea v-model="form.Description" class="input-field" rows="3" placeholder="Task details..."></textarea>
             </div>
 
@@ -111,12 +111,7 @@
           <div v-show="currentStep === 2" class="step-content form-animate">
             <h4 class="section-title">Schedule</h4>
 
-            <div class="form-group checkbox-group mb-3">
-              <label>
-                <input type="checkbox" v-model="form.IsRecurring"> 
-                This is a recurring task
-              </label>
-            </div>
+            
 
             <div v-if="form.IsRecurring" class="form-group mb-3 p-3 bg-light rounded">
               <label>Repeat on days *</label>
@@ -133,8 +128,9 @@
                 <label>{{ form.IsRecurring ? 'Starts From *' : 'Date *' }}</label>
                 <input v-model="form.StartDate" type="date" class="input-field">
               </div>
+              
               <div class="form-group" v-if="form.IsRecurring">
-                <label>Ends By <span class="optional-tag">(Optional)</span></label>
+                <label>Ends By *</label>
                 <input v-model="form.EndDate" type="date" class="input-field">
               </div>
             </div>
@@ -252,23 +248,24 @@ const loadingMembers = ref(true)
 const isSubmitting = ref(false)
 const members = ref([])
 
+// Wizard State
 const currentStep = ref(1)
 
 const form = ref({
   Title: '',
   Description: '',
   TaskType: 'Info',
-  TaskPriority: 'Middle',
+  TaskPriority: 'Middle', 
   Receivers: [],
-  IsRecurring: false,
-  DaysOfWeek: [],
   StartDate: new Date().toISOString().split('T')[0],
   EndDate: '',
   StartTime: '12:00',
   EndTime: '',
-  PenaltyType: 'None',
+  PenaltyType: 'None', // ИСПРАВЛЕНО: было penaltyType с маленькой 'p', из-за чего ломался select
   PenaltyAmount: null,
   Files: [],
+  IsRecurring: false,
+  DaysOfWeek: [], 
   
   // Dynamic
   ConfirmationButtonText: '',
@@ -282,26 +279,28 @@ const form = ref({
 })
 
 const weekDays = [
-  { value: 1, label: 'Mon' },
-  { value: 2, label: 'Tue' },
-  { value: 3, label: 'Wed' },
-  { value: 4, label: 'Thu' },
-  { value: 5, label: 'Fri' },
-  { value: 6, label: 'Sat' },
-  { value: 0, label: 'Sun' }
+  { value: 1, label: 'Mon' }, // Понедельник = 1
+  { value: 2, label: 'Tue' }, // Вторник = 2
+  { value: 3, label: 'Wed' }, // Среда = 3
+  { value: 4, label: 'Thu' }, // Четверг = 4
+  { value: 5, label: 'Fri' }, // Пятница = 5
+  { value: 6, label: 'Sat' }, // Суббота = 6
+  { value: 0, label: 'Sun' }  // Воскресенье = 0
 ];
 
 // --- Validation Logic per Step ---
 const isCurrentStepValid = computed(() => {
   if (currentStep.value === 1) {
     if (!form.value.Title.trim()) return false;
+    if (!form.value.Description.trim()) return false; 
     if (form.value.TaskType === 'Survey' && (!form.value.SurveyURL || !form.value.SurveyURL.trim())) return false;
     return true;
   }
   if (currentStep.value === 2) {
     if (!form.value.StartDate || !form.value.StartTime) return false;
+    if (form.value.IsRecurring && !form.value.EndDate) return false; 
+    if (form.value.PenaltyType !== 'None' && !form.value.PenaltyAmount) return false; // ИСПРАВЛЕНО
     if (form.value.IsRecurring && form.value.DaysOfWeek.length === 0) return false;
-    if (form.value.PenaltyType !== 'None' && !form.value.PenaltyAmount) return false;
     return true;
   }
   return true;
@@ -319,6 +318,7 @@ const prevStep = () => {
   }
 }
 
+// --- Fetch Members ---
 const fetchMembers = async () => {
   try {
     const response = await api.get(`/api/${props.clubId}/members`)
@@ -338,6 +338,7 @@ const fetchMembers = async () => {
   }
 }
 
+// --- Receivers Logic ---
 const selectAll = () => {
   form.value.Receivers = members.value.map(m => m.userId)
 }
@@ -350,25 +351,18 @@ const handleFileUpload = (event) => {
   form.value.Files = Array.from(event.target.files)
 }
 
-// Конвертация даты в строгий UTC ISO формат для бэкенда (избавляет от ошибки PostgreSQL Unspecified)
 const formatAsUtc = (dateStr) => {
   if (!dateStr) return '';
   return new Date(`${dateStr}T00:00:00Z`).toISOString();
 };
 
+// --- Submit Logic ---
 const submitTask = async () => {
   isSubmitting.value = true
 
   const formData = new FormData()
-  
-  formData.append('IsRecurring', form.value.IsRecurring ? 'true' : 'false')
 
-  if (form.value.IsRecurring && form.value.DaysOfWeek.length > 0) {
-    form.value.DaysOfWeek.forEach(day => {
-      formData.append('DaysOfWeek', day) 
-    })
-  }
-
+  // 1. БАЗОВЫЕ ПОЛЯ
   formData.append('Title', form.value.Title)
   formData.append('Description', form.value.Description || '')
   formData.append('TaskType', form.value.TaskType)
@@ -379,47 +373,59 @@ const submitTask = async () => {
   formData.append('SenderName', authStore.user?.firstName || authStore.user?.userName || 'Admin')
   formData.append('SenderSurname', authStore.user?.lastName || '')
 
-  // Используем formatAsUtc для конвертации в UTC
+  // 2. ДАТА И ВРЕМЯ
   formData.append('StartDate', formatAsUtc(form.value.StartDate))
+  
   if (form.value.IsRecurring && form.value.EndDate) {
     formData.append('EndDate', formatAsUtc(form.value.EndDate))
   }
   
-  // Добавляем секунды для C# TimeSpan (HH:mm:ss)
   formData.append('StartTime', form.value.StartTime + ':00')
+  
   if (form.value.EndTime) {
     formData.append('EndTime', form.value.EndTime + ':00')
+  } else {
+    formData.append('EndTime', '23:59:00')
   }
 
-  form.value.Receivers.forEach(id => {
-    formData.append('Receivers', id)
+  // 3. ПОВТОРЯЮЩИЕСЯ ДНИ И ПОЛУЧАТЕЛИ (Без индексов [index])
+  if (form.value.IsRecurring && form.value.DaysOfWeek.length > 0) {
+    form.value.DaysOfWeek.forEach((day) => {
+      formData.append('DaysOfWeek', day); 
+    })
+  }
+
+  form.value.Receivers.forEach((id) => {
+    formData.append('Receivers', id); 
   })
 
-  formData.append('PenaltyType', form.value.PenaltyType)
+  // 4. ШТРАФЫ И БОНУСЫ
+  formData.append('penaltyType', form.value.PenaltyType)
   if (form.value.PenaltyType !== 'None' && form.value.PenaltyAmount) {
     formData.append('PenaltyAmount', form.value.PenaltyAmount)
   }
 
-  // Динамические поля
+  // 5. ДИНАМИЧЕСКИЕ ПОЛЯ
   if (['Info', 'DocumentSign'].includes(form.value.TaskType) && form.value.ConfirmationButtonText) {
     formData.append('ConfirmationButtonText', form.value.ConfirmationButtonText)
   }
+  
   if (form.value.TaskType === 'Match') {
     if(form.value.OpponentName) formData.append('OpponentName', form.value.OpponentName)
     formData.append('IsHomeGame', form.value.IsHomeGame ? 'true' : 'false')
     if(form.value.HallAddress) formData.append('HallAddress', form.value.HallAddress)
     
-    // TimeSpan форматирование
     if(form.value.GatheringTime) formData.append('GatheringTime', form.value.GatheringTime + ':00')
     if(!form.value.IsHomeGame && form.value.DepartureTime) formData.append('DepartureTime', form.value.DepartureTime + ':00')
     
     if(form.value.GoogleMapsLink) formData.append('GoogleMapsLink', form.value.GoogleMapsLink)
   }
+  
   if (form.value.TaskType === 'Survey' && form.value.SurveyURL) {
     formData.append('SurveyURL', form.value.SurveyURL)
   }
 
-  // Файлы
+  // 6. ФАЙЛЫ
   if (form.value.Files.length > 0) {
     form.value.Files.forEach(file => {
       formData.append('Files', file)

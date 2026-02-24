@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, reactive } from 'vue';
+import { ref, computed, reactive, watch, onMounted } from 'vue';
 import { formatDate } from '@/utils/dateFormater'; 
 import api from '@/services/api'; 
+import debounce from 'lodash/debounce'; 
 
 const props = defineProps({
   user: {
@@ -36,6 +37,10 @@ const errors = reactive({
   email: ''
 });
 
+// Переменные для проверки уникальности Email 
+const isEmailAvailable = ref(null);
+const checkingEmail = ref(false);
+
 // --- COMPUTED ---
 const displayName = computed(() => {
   const u = props.user;
@@ -46,18 +51,88 @@ const displayName = computed(() => {
   return u.userName;
 });
 
+// Проверка валидности формы для блокировки кнопки
+const isFormValid = computed(() => {
+  if (!form.firstName.trim() || !form.lastName.trim()) return false;
+  if (!form.email.trim() || !validateEmail(form.email)) return false;
+  if (checkingEmail.value) return false;
+  if (isEmailAvailable.value === false) return false;
+  return true;
+});
+
+const validateEmail = (email) => {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+};
+
+// --- EMAIL CHECKING (через debounce) ---
+const checkEmail = async (value) => {
+  const currentEmail = value.trim();
+  const originalEmail = props.user?.email || '';
+
+  if (!currentEmail || !validateEmail(currentEmail) || currentEmail === originalEmail) {
+    isEmailAvailable.value = null;
+    return;
+  }
+
+  checkingEmail.value = true;
+  isEmailAvailable.value = null;
+
+  try {
+    // 1. ИСПОЛЬЗУЕМ ПРАВИЛЬНЫЙ ПУТЬ КАК В РЕГИСТРАЦИИ
+    const response = await api.get(`/api/auth/email-check`, { 
+      params: { email: currentEmail } 
+    });
+    
+    let result = response.data?.value ?? response.data;
+    
+    if (typeof result === 'string') {
+      result = result.toLowerCase() === 'true';
+    }
+
+    // 2. ИСПОЛЬЗУЕМ ЛОГИКУ ИЗ РЕГИСТРАЦИИ:
+    // Если метод IsEmailFree возвращает true (свободен), убираем ! перед Boolean
+    // Если метод возвращает true когда ЗАНЯТ, оставляем с !
+    // (По умолчанию я оставил логику из вашего RegisterView, где стояло !response.data)
+    isEmailAvailable.value = !Boolean(result);
+
+    // *ПРИМЕЧАНИЕ*: Если ваш новый метод `IsEmailFree` всё-таки возвращает true когда email СВОБОДЕН, 
+    // просто замените строчку выше на:
+    // isEmailAvailable.value = Boolean(result);
+
+  } catch (error) {
+    console.error("Email check failed:", error);
+    isEmailAvailable.value = null; 
+  } finally {
+    checkingEmail.value = false;
+  }
+};
+
+const checkEmailDebounced = debounce(checkEmail, 500);
+
+// Следим за полем email
+watch(() => form.email, (newValue) => {
+  errors.email = '';
+  checkEmailDebounced(newValue);
+});
+
+
 // --- METHODS ---
 const startEdit = () => {
   form.firstName = props.user.firstName || '';
   form.lastName = props.user.lastName || '';
   form.email = props.user.email || '';
   clearErrors();
+  isEmailAvailable.value = null;
+  checkingEmail.value = false;
   isEditing.value = true;
 };
 
 const cancelEdit = () => {
   isEditing.value = false;
   clearErrors();
+  isEmailAvailable.value = null;
+  checkingEmail.value = false;
 };
 
 const clearErrors = () => {
@@ -66,30 +141,10 @@ const clearErrors = () => {
   errors.email = '';
 };
 
-const validateEmail = (email) => {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email);
-};
-
 const saveChanges = async () => {
+  if (!isFormValid.value) return;
+
   clearErrors();
-  let hasError = false;
-
-  if (!form.firstName.trim()) {
-    errors.firstName = 'First name is required';
-    hasError = true;
-  }
-  if (!form.lastName.trim()) {
-    errors.lastName = 'Last name is required';
-    hasError = true;
-  }
-  if (!form.email || !validateEmail(form.email)) {
-    errors.email = 'Valid email is required';
-    hasError = true;
-  }
-
-  if (hasError) return;
-
   isSaving.value = true;
 
   try {
@@ -121,17 +176,10 @@ const saveChanges = async () => {
       return;
     }
 
-    // Ждем завершения запросов
     await Promise.all(promises);
     
-    // 1. Сообщаем родителю (на всякий случай)
     emit('user-updated'); 
-    
-    // 2. Закрываем форму
     isEditing.value = false;
-
-    // 3. ПЕРЕЗАГРУЖАЕМ СТРАНИЦУ
-    // Это обновит все данные приложения
     window.location.reload();
 
   } catch (error) {
@@ -218,7 +266,7 @@ const saveChanges = async () => {
                     placeholder="First Name" 
                     :disabled="isSaving"
                   />
-                  <span v-if="errors.firstName" class="error-msg">{{ errors.firstName }}</span>
+                  <span v-if="errors.firstName" class="form-msg error-text">{{ errors.firstName }}</span>
                 </div>
                 
                 <div class="form-group">
@@ -231,7 +279,7 @@ const saveChanges = async () => {
                     placeholder="Last Name" 
                     :disabled="isSaving"
                   />
-                  <span v-if="errors.lastName" class="error-msg">{{ errors.lastName }}</span>
+                  <span v-if="errors.lastName" class="form-msg error-text">{{ errors.lastName }}</span>
                 </div>
               </div>
 
@@ -241,18 +289,26 @@ const saveChanges = async () => {
                   v-model="form.email" 
                   type="email" 
                   class="edit-input" 
-                  :class="{ 'input-error': errors.email }"
+                  :class="{ 'input-error': errors.email || isEmailAvailable === false }"
                   placeholder="name@example.com" 
                   :disabled="isSaving"
                 />
-                <span v-if="errors.email" class="error-msg">{{ errors.email }}</span>
+                
+                <span v-if="checkingEmail" class="form-msg info">Checking...</span>
+                <span v-else-if="isEmailAvailable === true" class="form-msg success">Email is free</span>
+                <span v-else-if="isEmailAvailable === false" class="form-msg error-text">Email is taken</span>
+                <span v-else-if="errors.email" class="form-msg error-text">{{ errors.email }}</span>
               </div>
 
               <div class="action-buttons">
                 <button class="btn btn-cancel" @click="cancelEdit" :disabled="isSaving">
                   Cancel
                 </button>
-                <button class="btn btn-save" @click="saveChanges" :disabled="isSaving">
+                <button 
+                  class="btn btn-save" 
+                  @click="saveChanges" 
+                  :disabled="!isFormValid || isSaving"
+                >
                   <span v-if="isSaving" class="spinner"></span>
                   {{ isSaving ? 'Saving...' : 'Save Changes' }}
                 </button>
@@ -315,7 +371,6 @@ const saveChanges = async () => {
   width: 100%;
 }
 
-/* Info Top */
 .info-top {
   display: flex;
   align-items: center;
@@ -332,7 +387,6 @@ const saveChanges = async () => {
   line-height: 1.2;
 }
 
-/* --- СТИЛИ КНОПКИ --- */
 .btn-modify {
   display: inline-flex;
   align-items: center;
@@ -452,16 +506,21 @@ const saveChanges = async () => {
 }
 
 .input-error {
-  border-color: #ef4444;
+  border-color: #ef4444 !important;
   background-color: #fef2f2;
 }
 
-.error-msg {
-  font-size: 0.85rem;
-  color: #ef4444;
+/* --- СТИЛИ СООБЩЕНИЙ --- */
+.form-msg {
+  font-size: 13px;
   margin-top: 6px;
+  margin-left: 4px;
   display: block;
 }
+.success { color: #16a34a; font-weight: 500; }
+.error-text { color: #dc2626; font-weight: 500; }
+.info { color: #6b7280; font-style: italic; }
+
 
 .action-buttons {
   display: flex;
@@ -485,12 +544,17 @@ const saveChanges = async () => {
   transition: all 0.2s;
 }
 
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-cancel {
   background-color: white;
   border: 1px solid #d1d5db;
   color: #374151;
 }
-.btn-cancel:hover {
+.btn-cancel:hover:not(:disabled) {
   background-color: #f9fafb;
   border-color: #9ca3af;
 }
@@ -500,7 +564,7 @@ const saveChanges = async () => {
   color: white;
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
 }
-.btn-save:hover {
+.btn-save:hover:not(:disabled) {
   filter: brightness(110%);
   transform: translateY(-1px);
   box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
@@ -524,7 +588,6 @@ const saveChanges = async () => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* --- АДАПТИВ (Desktop) --- */
 @media (min-width: 768px) {
   .header-content {
     flex-direction: row;
