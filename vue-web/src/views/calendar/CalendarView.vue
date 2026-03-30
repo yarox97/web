@@ -120,7 +120,6 @@ const loadTasks = async () => {
     let allBasicTasks = []
 
     if (activeView.value === 'my') {
-      // Когда запрашиваем "Мои", бэкенд УЖЕ отдает только мои задачи
       const res = await taskService.getUserTasks(1, 100) 
       allBasicTasks = res.data?.value?.items || res.data?.items || res.data || []
     } else if (activeView.value === 'club' && selectedClubId.value) {
@@ -135,35 +134,31 @@ const loadTasks = async () => {
       return;
     }
 
-    // Запрашиваем детали
     const detailedTasksResponses = await Promise.all(
       uniqueIds.map(id => taskService.getTaskDetails(id))
     );
 
     const detailedTasks = detailedTasksResponses
       .map(res => res.data?.value || res.data)
-      .filter(d => !!(d?.task || d)); // Убрана жесткая проверка на receivers.length
+      .filter(d => !!(d?.task || d)); 
 
-    // Маппинг событий на основе твоего JSON
     const events = detailedTasks.map(detail => {
       const task = detail.task || detail;
       
-      // Берем статус напрямую из task.myStatus (как в JSON)
       const isCompleted = task.myStatus === 'Completed' || task.status === 'Completed';
       const isClubTask = task.clubId != null;
 
       let bgColor = isCompleted ? '#10b981' : (isClubTask ? '#8b5cf6' : '#0ea5e9');
       let borderColor = isCompleted ? '#059669' : (isClubTask ? '#7c3aed' : '#0284c7');
 
-      // ДОСТАЕМ И СКЛЕИВАЕМ ДАТЫ (на основе объекта schedule из JSON)
       const schedule = task.schedule || task.taskSchedule || {};
       
       let startStr = schedule.startDate || task.startDate;
       if (startStr && startStr.includes('T')) {
-        startStr = startStr.split('T')[0]; // берем только YYYY-MM-DD
+        startStr = startStr.split('T')[0]; 
       }
       if (startStr && schedule.startTime) {
-        startStr = `${startStr}T${schedule.startTime}`; // Добавляем время (T16:00:00)
+        startStr = `${startStr}T${schedule.startTime}`; 
       }
 
       let endStr = schedule.endDate || task.endDate;
@@ -223,7 +218,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* СТИЛИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ, КАК В ПРОШЛОМ ОТВЕТЕ */
 .content-wrapper {
   height: 100%;
   display: flex;

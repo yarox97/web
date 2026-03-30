@@ -259,7 +259,6 @@ const form = ref({
   SurveyURL: ''
 })
 
-// Валидация шагов
 const isCurrentStepValid = computed(() => {
   if (currentStep.value === 1) {
     if (!form.value.Title.trim()) return false;
@@ -283,7 +282,6 @@ const prevStep = () => {
   if (currentStep.value > 1) currentStep.value--;
 }
 
-// Загрузка участников с исключением себя
 const fetchMembers = async () => {
   try {
     const response = await api.get(`/api/${props.clubId}/members`)

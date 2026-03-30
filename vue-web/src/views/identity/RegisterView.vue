@@ -68,6 +68,7 @@
           v-model="password" 
           required 
           placeholder=" "
+          minlength="5"
         />
         <label for="password">Password</label>
       </div>
@@ -127,20 +128,18 @@ form {
   align-items: center;
 }
 
-/* Контейнер поля */
 .field {
   width: 100%;
   position: relative;
-  margin-bottom: 20px; /* Чуть больше отступ, чтобы вместить сообщения об ошибках */
+  margin-bottom: 20px; 
   display: flex;
-  flex-direction: column; /* Элементы внутри строятся вертикально */
+  flex-direction: column; 
 }
 
-/* Стили Input */
 input {
   width: 100%;
-  height: 50px; /* Фиксированная высота для правильного позиционирования */
-  padding: 20px 10px 6px; /* Отступ сверху для лейбла */
+  height: 50px;
+  padding: 20px 10px 6px; 
   border-radius: 6px;
   border: 1px solid #ccc;
   font-size: 14px;
@@ -154,11 +153,10 @@ input:focus {
   border-color: var(--blue, #3a86c0);
 }
 
-/* Стили Label (Floating) */
 label {
   position: absolute;
   left: 10px;
-  top: 25px; /* Половина высоты инпута (50px/2) */
+  top: 25px; 
   transform: translateY(-50%);
   font-size: 14px;
   color: #6b7280;
@@ -168,7 +166,6 @@ label {
   padding: 0;
 }
 
-/* Анимация лейбла при фокусе или наличии текста */
 input:focus ~ label,
 input:not(:placeholder-shown) ~ label {
   top: 8px;
@@ -178,7 +175,6 @@ input:not(:placeholder-shown) ~ label {
   font-weight: 600;
 }
 
-/* Кнопки */
 button {
   width: 100%;
   padding: 12px;
@@ -201,12 +197,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Сообщения валидации */
 .success, .error-text, .info {
   font-size: 12px;
   margin-top: 4px;
   margin-left: 2px;
-  display: block; /* Чтобы падали на новую строку */
+  display: block;
 }
 
 .success { color: #16a34a; }
@@ -245,7 +240,6 @@ import debounce from "lodash/debounce";
 
 export default {
   name: "RegisterView",
-  // Script секция остается без изменений, так как логика не менялась
   data() {
     return {
       userName: "",
@@ -311,8 +305,8 @@ export default {
         return;
       }
 
-      this.checkingEmail = false; // Note: In original code logic seemed to set this false immediately, assuming typo fixed here or preserved logic
-      this.checkingEmail = true; // Fixed logic slightly to actually show loading
+      this.checkingEmail = false; 
+      this.checkingEmail = true; 
       try {
         const response = await axios.get(
           "https://localhost:7207/api/auth/email-check",

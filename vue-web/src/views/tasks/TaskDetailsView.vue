@@ -393,9 +393,8 @@ const responseForm = ref({
   files: []
 });
 
-// === ЛОГИКА ПАГИНАЦИИ И СОРТИРОВКИ ПОЛУЧАТЕЛЕЙ ===
 const receiversCurrentPage = ref(1);
-const receiversPageSize = ref(5); // Количество получателей на одной странице (можно изменить)
+const receiversPageSize = ref(5); 
 
 const sortedReceivers = computed(() => {
   if (!taskData.value?.receivers) return [];
@@ -404,18 +403,15 @@ const sortedReceivers = computed(() => {
     const isCompletedA = a.taskStatus === 'Completed' || a.taskStatus === 'Confirmed';
     const isCompletedB = b.taskStatus === 'Completed' || b.taskStatus === 'Confirmed';
     
-    // 1. Выполненные (Completed/Confirmed) поднимаем наверх
     if (isCompletedA && !isCompletedB) return -1;
     if (!isCompletedA && isCompletedB) return 1;
     
-    // 2. Если оба выполнены, сортируем по дате выполнения (самые свежие сверху)
     if (isCompletedA && isCompletedB) {
       const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
       const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
       return dateB - dateA;
     }
     
-    // 3. Все остальные сортируются по алфавиту (имени)
     return a.fullName.localeCompare(b.fullName);
   });
 });
@@ -435,7 +431,6 @@ const changeReceiversPage = (page) => {
     receiversCurrentPage.value = page;
   }
 };
-// ===============================================
 
 const myTaskReceiverData = computed(() => {
   if (!taskData.value || !taskData.value.receivers) return null;
@@ -667,7 +662,7 @@ const fetchTaskDetails = async () => {
   try {
     const res = await api.get(`/api/tasks/${taskId}`);
     taskData.value = res.data?.value || res.data;
-    receiversCurrentPage.value = 1; // Сбрасываем страницу пагинации при обновлении данных
+    receiversCurrentPage.value = 1;
   } catch (err) {
     error.value = "Task not found or access denied.";
   } finally {
@@ -701,10 +696,10 @@ const getPriorityClass = (p) => {
 const getStatusClass = (s) => {
   const status = String(s).toLowerCase();
   if(status === 'completed') return 'status-success';
-  if(status === 'confirmed') return 'status-confirmed'; // Новый статус
+  if(status === 'confirmed') return 'status-confirmed'; 
   if(status === 'failed' || status === 'overdued') return 'status-danger';
-  if(status === 'returned') return 'status-returned'; // Новый статус
-  return 'status-warning'; // По умолчанию для Uncompleted/Pending
+  if(status === 'returned') return 'status-returned'; 
+  return 'status-warning'; 
 };
 
 const formatStatus = (s) => s === 'Uncompleted' ? 'Pending' : s;
@@ -718,18 +713,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ПЕРЕМЕННЫЕ И БАЗОВЫЕ СТИЛИ */
 .page-container { 
   padding: clamp(15px, 4vw, 30px); 
   width: 100%;       
   box-sizing: border-box; 
-  color: #334155; /* Чуть мягче чем черный */
+  color: #334155; 
   font-family: 'Inter', system-ui, sans-serif; 
   min-height: calc(100vh - 80px); 
   background: #f8fafc;
 }
 
-/* СЕТКА СТРАНИЦЫ */
 .layout-grid { 
   display: flex; 
   gap: clamp(15px, 3vw, 30px); 
@@ -753,18 +746,17 @@ onMounted(async () => {
   gap: 20px; 
 }
 
-/* КАРТОЧКИ */
+
 .card { 
   background: white; 
   border-radius: 16px; 
   border: 1px solid #e2e8f0; 
   padding: clamp(16px, 3vw, 24px); 
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Тень стала мягче */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); 
 }
 .header-card { border-top: 4px solid var(--color-primary, #007bff); }
 .section-card { margin-top: 0; }
 
-/* НАВИГАЦИЯ И КНОПКИ */
 .nav-header { 
   display: flex; 
   justify-content: space-between; 
@@ -807,7 +799,6 @@ onMounted(async () => {
 .success-badge { background: #f0fdf4; color: #15803d; border: 1px solid #dcfce7; }
 .default-badge { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 
-/* ТИПОГРАФИКА */
 .title-container { margin-bottom: 16px; }
 .task-title { 
   font-size: clamp(1.5rem, 5vw, 2.2rem); 
@@ -823,8 +814,6 @@ onMounted(async () => {
 .btn-secondary-small { background: white; border: 1px dashed #cbd5e1; padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
 .btn-secondary-small:hover { background: #f8fafc; border-color: #94a3b8; }
 
-
-/* ВИДЖЕТ ТАЙМЛАЙНА */
 .timeline-widget { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: clamp(16px, 2vw, 20px); margin-top: 10px; flex-wrap: wrap; gap: 15px;}
 .time-block { display: flex; align-items: center; gap: 16px; min-width: 140px; z-index: 2; }
 .align-right { flex-direction: row-reverse; text-align: right; }
@@ -847,8 +836,6 @@ onMounted(async () => {
 .progress-fill.bg-danger { background: #ef4444; }
 .progress-thumb { position: absolute; top: 50%; left: var(--progress); transform: translate(-50%, -50%); width: 16px; height: 16px; background: white; border: 4px solid var(--color-primary, #007bff); border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.3s ease; }
 
-
-/* ФИНАНСЫ (ПЕНАЛЬТИ / БОНУС) */
 .financial-banner { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-radius: 12px; margin-top: 16px; border: 1px dashed; flex-wrap: wrap;}
 .penalty-banner { background: #fff1f2; border-color: #fecaca; }
 .bonus-banner { background: #f0fdf4; border-color: #bbf7d0; }
@@ -862,7 +849,6 @@ onMounted(async () => {
 .penalty-banner .financial-value { color: #e11d48; }
 .bonus-banner .financial-value { color: #16a34a; }
 
-/* ФОРМА РЕДАКТИРОВАНИЯ */
 .edit-schedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; }
 .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 8px; }
 .input-group { display: flex; gap: 10px; }
@@ -875,11 +861,9 @@ onMounted(async () => {
 .desc-textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
 .priority-select { width: auto; padding: 6px 12px; font-weight: 600; }
 
-/* ОПИСАНИЕ */
 .text-body { font-size: 1.05rem; color: #334155; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; }
 .payload-box { margin-top: 24px; padding-top: 24px; border-top: 1px dashed #e2e8f0; }
 
-/* ОТВЕТ ПОЛЬЗОВАТЕЛЯ */
 .response-card { border-top: 4px solid #10b981; }
 .respond-prompt { text-align: center; padding: 10px 0; }
 .mb-3 { margin-bottom: 12px; }
@@ -914,7 +898,6 @@ onMounted(async () => {
 .success-icon { background: #22c55e; color: white; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; }
 .success-text { display: flex; flex-direction: column; gap: 4px; }
 
-/* ВЛОЖЕНИЯ */
 .attachments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .attachment-card { display: flex; align-items: center; gap: 16px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; text-decoration: none; color: inherit; transition: all 0.2s; }
 .attachment-card:hover { border-color: #cbd5e1; background: #f1f5f9; transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
@@ -924,7 +907,6 @@ onMounted(async () => {
 .att-size { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
 .empty-state { padding: 24px; text-align: center; color: #94a3b8; font-size: 0.95rem; font-style: italic; background: #f8fafc; border-radius: 12px; border: 1px dashed #e2e8f0; }
 
-/* ПОЛУЧАТЕЛИ */
 .receivers-list { display: flex; flex-direction: column; gap: 12px; }
 .receiver-list-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; transition: all 0.2s; }
 .receiver-list-item:hover { border-color: var(--color-primary, #007bff); background: #f0f7ff; transform: translateX(4px); }
@@ -933,8 +915,6 @@ onMounted(async () => {
 .receiver-name { font-size: 1rem; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .receiver-completed-date { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
 
-/* === НОВЫЕ ПАСТЕЛЬНЫЕ СТАТУСЫ === */
-/* Контейнер статуса */
 .receiver-status { 
   display: flex; align-items: center; gap: 6px; 
   padding: 4px 10px; border-radius: 20px; border: 1px solid; 
@@ -942,29 +922,21 @@ onMounted(async () => {
 }
 .status-indicator { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-/* ЦВЕТОВЫЕ СХЕМЫ (Soft UI) */
-
-/* Success (Completed) - Пастельный зеленый */
 .status-success { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 .status-success .status-indicator { background: #10b981; }
 
-/* Danger (Failed/Overdue) - Пастельный красный */
 .status-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 .status-danger .status-indicator { background: #ef4444; }
 
-/* Warning (Pending/Uncompleted) - Пастельный желтый/янтарный */
 .status-warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
 .status-warning .status-indicator { background: #f59e0b; }
 
-/* Returned - Пастельный оранжевый */
 .status-returned { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
 .status-returned .status-indicator { background: #f97316; }
 
-/* Confirmed - Пастельный фиолетовый */
 .status-confirmed { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
 .status-confirmed .status-indicator { background: #8b5cf6; }
 
-/* ПАГИНАЦИЯ ПОЛУЧАТЕЛЕЙ */
 .receivers-pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
 .r-page-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; color: #475569; cursor: pointer; transition: all 0.2s; }
 .r-page-btn:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
@@ -977,26 +949,21 @@ onMounted(async () => {
 .content-animate { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* === АДАПТИВНОСТЬ (МЕДИА-ЗАПРОСЫ) === */
-
-/* Планшеты и маленькие ноутбуки */
 @media (max-width: 1024px) {
   .layout-grid { flex-direction: column; }
   .side-column { width: 100%; }
 }
 
-/* Мобильные устройства */
 @media (max-width: 640px) {
   .nav-header { flex-direction: column; align-items: flex-start; }
   .admin-actions { width: 100%; }
   .btn-action { flex: 1; }
   
-  /* ИЗМЕНЕННЫЙ БЛОК: Скрываем прогресс бар, оставляем блоки дат как карточки */
   .timeline-widget { 
     flex-direction: column; 
     align-items: stretch; 
     gap: 12px; 
-    background: transparent; /* Убираем фон общего контейнера */
+    background: transparent;
     border: none;
     padding: 0;
   }
@@ -1010,10 +977,8 @@ onMounted(async () => {
     box-sizing: border-box;
   }
   
-  /* Возвращаем иконку дедлайна обратно влево */
   .time-block.align-right { flex-direction: row; text-align: left; }
   
-  /* Полностью скрываем полосу прогресса */
   .progress-section { display: none; }
   
   .edit-schedule-grid { grid-template-columns: 1fr; }
@@ -1021,7 +986,6 @@ onMounted(async () => {
   .penalty-group { flex-direction: column; max-width: 100%; }
 }
 
-/* Очень маленькие экраны (Телефоны вертикально) */
 @media (max-width: 480px) {
   .badges-row { flex-direction: column; align-items: flex-start; }
   

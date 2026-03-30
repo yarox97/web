@@ -252,7 +252,7 @@ const submitForm = async () => {
   overflow: hidden;
 }
 
-/* --- Прогресс бар --- */
+
 .progress-section {
   padding: 30px 40px 10px 40px;
 }
@@ -284,7 +284,7 @@ const submitForm = async () => {
   font-weight: 700;
 }
 
-/* --- Контент формы --- */
+
 .form-content-area {
   padding: 20px 40px;
   min-height: 320px;
@@ -308,7 +308,6 @@ const submitForm = async () => {
   font-size: 0.95rem;
 }
 
-/* --- Поля ввода (Inputs) --- */
 .form-group {
   margin-bottom: 20px;
 }
@@ -362,11 +361,10 @@ input:focus, textarea:focus {
   margin-top: 5px;
 }
 
-/* --- Стили для виджета и бейджа ID --- */
 .id-badge {
   margin-top: 8px;
   font-size: 0.9rem;
-  color: #059669; /* Green-600 */
+  color: #059669;
   background: #d1fae5;
   padding: 4px 10px;
   border-radius: 6px;
@@ -388,7 +386,6 @@ input:focus, textarea:focus {
   background: white;
 }
 
-/* --- Summary Box (Итоги) --- */
 .summary-box {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -402,7 +399,7 @@ input:focus, textarea:focus {
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e2e8f0;
-  flex-wrap: wrap; /* Важно для iframe внутри summary */
+  flex-wrap: wrap; 
 }
 
 .summary-row:last-child {
@@ -433,7 +430,6 @@ input:focus, textarea:focus {
   font-size: 0.9rem;
 }
 
-/* --- Кнопки --- */
 .form-actions {
   padding: 20px 40px 30px 40px;
   display: flex;
@@ -483,7 +479,6 @@ input:focus, textarea:focus {
   visibility: hidden;
 }
 
-/* --- Анимации --- */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
@@ -498,7 +493,6 @@ input:focus, textarea:focus {
   transform: translateX(-10px);
 }
 
-/* --- Мобильная адаптивность --- */
 @media (max-width: 640px) {
   .page-wrapper {
     padding: 10px;

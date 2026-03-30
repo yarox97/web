@@ -64,12 +64,10 @@ const props = defineProps({
 
 const router = useRouter()
 
-// Читаем имя создателя
 const assignerName = computed(() => {
   return props.payload.AssignerFullName || 'Management';
 });
 
-// Проверка на наличие штрафа (на случай если в других просроченных задачах он будет)
 const hasPenalty = computed(() => {
   const type = props.payload.TaskPenaltyType;
   const val = Number(props.payload.TaskPenaltyValue);
@@ -82,7 +80,6 @@ const formatPenaltyType = (type) => {
   return type;
 };
 
-// Приоритеты ('Highest' тоже учтен)
 const priorityClass = computed(() => {
   const p = String(props.payload.TaskPriority).toLowerCase();
   if (p === 'high' || p === 'highest' || p === 'urgent') return 'priority-high';
@@ -102,7 +99,6 @@ const viewTask = () => {
   margin: 12px 0 16px 0;
 }
 
-/* Красная тема для внутренней карточки */
 .error-box {
   background-color: #fff;
   border: 1px solid #fecaca;
@@ -145,19 +141,16 @@ const viewTask = () => {
   font-weight: 600;
 }
 
-/* Красный бейдж для сорванной даты */
 .overdue-date-badge {
   background-color: #fee2e2;
   color: #b91c1c;
 }
 
-/* Яркий красный бейдж для штрафа */
 .active-penalty-badge {
   background-color: #ef4444;
   color: white;
 }
 
-/* Приоритеты */
 .priority-high {
   background-color: #ffedd5;
   color: #ea580c;

@@ -118,7 +118,6 @@ form {
   height: 50px; 
 }
 
-/* Стили Input */
 input {
   width: 100%;
   height: 100%;

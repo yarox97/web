@@ -20,7 +20,6 @@ const props = defineProps({
   payload: { type: Object, required: true }
 })
 
-// Получаем строку с тегом <iframe>
 const iframeHtml = computed(() => props.payload.surveyUrl || props.payload.SurveyUrl)
 </script>
 
@@ -43,7 +42,6 @@ const iframeHtml = computed(() => props.payload.surveyUrl || props.payload.Surve
   font-size: 0.95rem; 
 }
 
-/* Контейнер для iframe */
 .iframe-wrapper {
   width: 100%;
   border-radius: 12px;
@@ -52,13 +50,9 @@ const iframeHtml = computed(() => props.payload.surveyUrl || props.payload.Surve
   background: #f8fafc;
 }
 
-/* Используем :deep(), чтобы стили применились к iframe, 
-  который Vue вставит динамически через v-html.
-  Это перебьет жесткие размеры от Google (например width="640")
-*/
 .iframe-wrapper :deep(iframe) {
   width: 100% !important;
-  min-height: 600px; /* Минимальная высота для удобства */
+  min-height: 600px;
   border: none !important;
   display: block;
 }

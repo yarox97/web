@@ -38,26 +38,21 @@ const backgroundColors = [
   '#06b6d4', '#f43f5e', '#84cc16', '#d946ef', '#14b8a6'
 ];
 
-// --- ЛОГИКА ТЕКУЩЕГО МЕСЯЦА ---
 const now = new Date();
-const currentMonthNum = now.getMonth() + 1; // Месяцы в JS идут от 0 до 11, поэтому +1
+const currentMonthNum = now.getMonth() + 1;
 const currentYearNum = now.getFullYear();
 
-// Форматируем название месяца (например: "February 2026")
 const currentMonthName = computed(() => {
   return now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 });
 
-// Фильтруем ТОЛЬКО пейслипы текущего месяца и года
 const currentMonthPayslips = computed(() => {
   return payslips.value.filter(slip => 
     slip.month === currentMonthNum && slip.year === currentYearNum
   );
 });
 
-// --- ДАННЫЕ ДЛЯ ГРАФИКА ---
 const chartData = computed(() => {
-  // Используем отфильтрованные данные текущего месяца
   const incomeByClub = currentMonthPayslips.value.reduce((acc, slip) => {
     const club = slip.clubName || 'Other';
     acc[club] = (acc[club] || 0) + (slip.totalAmount || 0);
@@ -125,7 +120,6 @@ const chartOptions = computed(() => ({
 
 const fetchPayslips = async () => {
   try {
-    // Получаем список всех пейслипов юзера (100 штук хватит с запасом)
     const response = await payslipsService.getMyPayslips(1, 100); 
     const data = response.data?.value || response.data;
     payslips.value = data.items || [];
@@ -160,7 +154,6 @@ onMounted(fetchPayslips);
   border-radius: 20px;
   align-self: flex-start;
   margin-bottom: 15px;
-  /* Если в родительском ProfileView.vue заголовок слева, бейджик красиво встанет под ним */
 }
 
 .pie-container {

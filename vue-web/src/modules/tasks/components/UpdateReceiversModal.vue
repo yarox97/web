@@ -65,10 +65,8 @@ const isSaving = ref(false)
 const members = ref([])
 const selectedIds = ref([...props.currentIds])
 
-// Фильтруем список: убираем самого себя из выбора получателей
 const availableMembers = computed(() => {
   const currentUserId = authStore.user?.id;
-  // Фильтруем, чтобы ID не совпадал с текущим пользователем
   return members.value.filter(m => 
     String(m.userId).toLowerCase() !== String(currentUserId).toLowerCase()
   );
@@ -94,14 +92,12 @@ const fetchMembers = async () => {
 }
 
 const selectAll = () => {
-  // Выбираем только доступных (себя не добавляем)
   selectedIds.value = availableMembers.value.map(m => m.userId)
 }
 
 const save = async () => {
   isSaving.value = true
   try {
-    // ВАЖНО: Service должен отправлять объект { newReceiverIds: [...] }
     await tasksService.updateTaskReceivers(props.taskId, selectedIds.value)
     emit('updated')
   } catch (e) {

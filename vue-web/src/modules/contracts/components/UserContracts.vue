@@ -1,12 +1,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router'; // Добавлен импорт роутера
+import { useRouter } from 'vue-router'; 
 import { contractsService } from '../services/contractsService';
 import { formatDate } from '@/utils/dateFormater';
 import Spinner from '@/components/shared/Spinner.vue';
 
 // --- ROUTER ---
-const router = useRouter(); // Инициализация роутера
+const router = useRouter(); 
 
 // --- STATE ---
 const contracts = ref([]);
@@ -33,7 +33,7 @@ const getStatusClass = (isActive, endDate) => {
   return 'status-inactive';
 };
 
-// Функция для перехода на страницу деталей
+
 const goToContractDetails = (contractId) => {
   router.push({ name: 'ContractDetails', params: { id: contractId } });
 };
@@ -191,7 +191,7 @@ onMounted(fetchContracts);
 </template>
 
 <style scoped>
-/* Добавлен стиль для курсора и эффекта при наведении */
+
 .clickable {
   cursor: pointer;
 }
@@ -212,7 +212,6 @@ onMounted(fetchContracts);
   box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
 }
 
-/* ... (остальные стили без изменений) ... */
 .content-wrapper { height: 100%; display: flex; flex-direction: column; }
 .header-bar { display: flex; justify-content: space-between; align-items: center; height: 64px; padding: 0 20px; background-color: white; border-radius: 16px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .header-left h2 { font-size: 1.25rem; font-weight: 700; margin: 0; }

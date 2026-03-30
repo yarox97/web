@@ -24,7 +24,6 @@ const submitJoinForm = async () => {
   loadingJoin.value = true
   try {
     await api.post('/api/joinClubRequests', { joinCode: joinForm.value.joinCode })
-    // Обновляем данные пользователя и сообщаем родителю об успехе
     await authStore.checkAuth()
     emit('joined') 
     closeModal()

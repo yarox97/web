@@ -1,13 +1,13 @@
 <script setup>
   import { onMounted } from 'vue'
   import { useRouter } from 'vue-router'
-  import { useAuthStore } from '@/stores/authStore' // Импортируем ваш стор
+  import { useAuthStore } from '@/stores/authStore'
   import headerBg from '@/views/landing/img/header/bg.jpg' 
+  import appImage from '@/views/landing/img/creating/ready_project.jpg'
 
   const router = useRouter();
   const authStore = useAuthStore();
 
-  // Проверяем статус при загрузке лендинга
   onMounted(async () => {
 
   });
@@ -65,7 +65,8 @@
             <button class="creating__btn" @click="goToRegister">Create profile</button>
          </div>
          <div class="creating__visual">
-             <div class="creating__img"></div> </div> 
+            <img :src="appImage" alt="VolleyMS App Interface" class="creating__img" />
+         </div>
       </section>
 
       <section class="offer" id="pricing">
@@ -123,7 +124,7 @@
    height: 100%;
    width: 100%;
    font-size: 16px; 
-   line-height: 1.5; // Улучшена читаемость
+   line-height: 1.5; 
    font-family: 'Inter', sans-serif;
    color: #262626;
    background-color: #ffffff;
@@ -172,7 +173,7 @@
    width: 100%;
    background: #fff;
    z-index: 50;
-   padding: 80px 20px 40px; // Отступ сверху для мобилки
+   padding: 80px 20px 40px; 
    transform: translateY(-100%);
    transition: transform 0.3s ease-in-out;
    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
@@ -205,7 +206,7 @@
    }
 
    &__btn {
-      display: none; // Скрыта на мобильных, есть ссылка в списке
+      display: none;
    }
 }
 
@@ -352,10 +353,10 @@
 
    &__img {
       width: 100%;
-      height: 300px;
-      background-color: #D9D9D9;
+      height: auto; // Фото само определит высоту исходя из ширины
+      display: block;
       border-radius: 20px;
-      object-fit: cover;
+      // Убираем object-fit, он больше не нужен
    }
 }
 
@@ -481,7 +482,7 @@
       gap: 60px;
 
       &__img {
-         height: 450px;
+         height: auto; // ЗАМЕНИТЕ 450px на auto или просто удалите эту строку
       }
    }
 

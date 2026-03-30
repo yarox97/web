@@ -55,12 +55,10 @@ const props = defineProps({
   }
 })
 
-// --- ФИНАНСЫ И ШТРАФЫ ---
 const isBonus = computed(() => ['ValuePremia', 'PercentPremia'].includes(props.task.penaltyType))
 const isPenalty = computed(() => ['ValueFine', 'PercentFine'].includes(props.task.penaltyType))
 const financialSymbol = computed(() => ['PercentFine', 'PercentPremia'].includes(props.task.penaltyType) ? '%' : '$')
 
-// --- ПРИОРИТЕТЫ ---
 const priorityClass = computed(() => {
   if (!props.task.taskPriority) return ''
   const p = props.task.taskPriority.toLowerCase()
@@ -70,8 +68,6 @@ const priorityClass = computed(() => {
   return ''
 })
 
-// --- СТАТУСЫ ---
-// Учитываем разные варианты нейминга свойств с бэкенда
 const currentStatus = computed(() => props.task.myStatus || props.task.taskStatus || props.task.status || 'Uncompleted')
 
 const hasResponses = computed(() => {
@@ -90,10 +86,8 @@ const statusClass = computed(() => {
   if (s === 'Returned') return 'status-returned'; 
   if (s === 'Unconfirmed') return 'status-unconfirmed'; 
   
-  // Если статус Uncompleted, и ЕСТЬ ответы -> Синий In Progress
   if (s === 'Uncompleted' && hasResponses.value) return 'status-inprogress';
-  
-  // Во всех остальных случаях Uncompleted (без ответов) -> Оранжевый Pending
+
   return 'status-pending'; 
 })
 
@@ -112,9 +106,7 @@ const formattedStatus = computed(() => {
   return 'Pending';
 })
 
-// --- ДАТЫ И ДЕДЛАЙНЫ ---
 const getEndDate = () => {
-  // Проверяем все возможные варианты вложенности даты с бэкенда
   return props.task.schedule?.endDate || props.task.taskSchedule?.endDate || props.task.endDate;
 }
 
@@ -132,7 +124,6 @@ const formattedDeadline = computed(() => {
 </script>
 
 <style scoped>
-/* Базовые стили карточки */
 .task-card {
   background: var(--color-background-soft, #ffffff);
   border-radius: 12px;
@@ -151,7 +142,6 @@ const formattedDeadline = computed(() => {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
 
-/* Цвета боковой полоски (border-left) */
 .status-completed { border-left-color: var(--color-success, #28a745); }
 .status-failed { border-left-color: var(--color-danger, #dc3545); }
 .status-inprogress { border-left-color: #3b82f6; } 
@@ -160,7 +150,6 @@ const formattedDeadline = computed(() => {
 .status-unconfirmed { border-left-color: #8b5cf6; } 
 .status-neutral { border-left-color: #cbd5e1; } 
 
-/* Шапка карточки */
 .task-header { 
   display: flex; 
   justify-content: space-between; 
@@ -174,7 +163,6 @@ const formattedDeadline = computed(() => {
   color: var(--color-text-primary, #333); 
 }
 
-/* Бейджи статусов */
 .task-status {
   font-size: 0.8rem;
   padding: 4px 8px;
@@ -192,7 +180,6 @@ const formattedDeadline = computed(() => {
 .status-returned .task-status { background: #ffedd5; color: #c2410c; }
 .status-unconfirmed .task-status { background: #ede9fe; color: #6d28d9; }
 
-/* Описание */
 .task-desc {
   color: var(--color-text-secondary, #666);
   font-size: 0.95rem; 
@@ -203,7 +190,6 @@ const formattedDeadline = computed(() => {
   overflow: hidden;
 }
 
-/* Подвал карточки */
 .task-footer {
   display: flex; 
   justify-content: space-between; 
@@ -217,7 +203,6 @@ const formattedDeadline = computed(() => {
 .info-value { font-weight: 500; color: #444; }
 .overdue { color: var(--color-danger, #dc3545); font-weight: bold; }
 
-/* Финансы (Штрафы/Бонусы) */
 .task-financials { 
   display: flex; 
   gap: 10px; 
@@ -227,7 +212,6 @@ const formattedDeadline = computed(() => {
 .penalty { color: #ef4444; background: #fef2f2; padding: 2px 8px; border-radius: 6px;}
 .reward { color: #16a34a; background: #f0fdf4; padding: 2px 8px; border-radius: 6px;}
 
-/* Приоритеты */
 .title-and-priority { 
   display: flex; 
   flex-direction: column; 

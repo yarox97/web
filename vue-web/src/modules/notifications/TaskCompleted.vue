@@ -64,12 +64,11 @@ const props = defineProps({
 
 const router = useRouter()
 
-// Читаем имя выполнившего из MemberFullName (как в JSON)
+
 const memberName = computed(() => {
   return props.payload.MemberFullName || 'Club Member';
 });
 
-// Учитываем 'Middle' из вашего JSON
 const priorityClass = computed(() => {
   const p = String(props.payload.TaskPriority).toLowerCase();
   if (p === 'high' || p === 'highest' || p === 'urgent') return 'priority-high';
@@ -89,7 +88,6 @@ const viewTask = () => {
   margin: 12px 0 16px 0;
 }
 
-/* Зеленая рамка и фон для выполненной задачи */
 .success-box {
   background-color: #ffffff;
   border: 1px solid #bbf7d0;
@@ -113,7 +111,7 @@ const viewTask = () => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-word; /* Защита от длинного текста без пробелов */
+  word-break: break-word;
 }
 
 .task-badges {
@@ -132,20 +130,19 @@ const viewTask = () => {
   font-weight: 600;
 }
 
-/* Ярко-зеленый бейдж для факта выполнения */
 .completed-badge {
   background-color: #dcfce7;
   color: #16a34a;
   border: 1px solid #bbf7d0;
 }
 
-/* Серый бейдж для оригинального дедлайна */
+
 .date-badge {
   background-color: #f1f5f9;
   color: #64748b;
 }
 
-/* Приоритеты */
+
 .priority-high {
   background-color: #ffedd5;
   color: #ea580c;

@@ -77,14 +77,12 @@ import api from '@/services/api'
 import { formatDate } from '@/utils/dateFormater'
 import { useNotificationStore } from '@/stores/notificationStore'
 
-// 1. ИМПОРТ МОДУЛЕЙ
 import ClubJoinRequest from '@/modules/notifications/ClubJoinRequest.vue'
 import ClubJoinApproved from '@/modules/notifications/ClubJoinApproved.vue'
 import ClubJoinRejected from '@/modules/notifications/ClubJoinRejected.vue'
 import ContractAssigned from '@/modules/notifications/ContractAssigned.vue'
 import KickedFromClubByClub from '@/modules/notifications/KickedFromClubByClub.vue'
 
-// Новые компоненты для задач
 import TaskAssigned from '@/modules/notifications/TaskAssigned.vue'
 import TaskModified from '@/modules/notifications/TaskModified.vue'
 import TaskOverdue from '@/modules/notifications/TaskOverdue.vue'
@@ -103,14 +101,13 @@ const error = ref(null)
 
 const notificationId = route.params.id
 
-// 2. СЛОВАРЬ КОМПОНЕНТОВ
 const notificationComponents = {
   'ClubJoinRequest': ClubJoinRequest,
   'ClubJoinApproved': ClubJoinApproved,
   'ClubJoinRejected': ClubJoinRejected,
   'ContractAssigned': ContractAssigned,
   'KickedFromClubByClub': KickedFromClubByClub,
-  // Добавленные задачи
+
   'TaskAssigned': TaskAssigned,
   'TaskModified': TaskModified,
   'TaskOverdue': TaskOverdue,
@@ -119,7 +116,6 @@ const notificationComponents = {
   'TaskReturned': TaskReturned
 }
 
-// 3. СЛОВАРЬ КРАСИВЫХ НАЗВАНИЙ
 const categoryLabels = {
   'ClubJoinRequest': 'Join Request',
   'ClubJoinApproved': 'Approved',
@@ -148,7 +144,6 @@ const currentPayload = computed(() => {
   }
 })
 
-// Выбор компонента для рендера
 const currentPayloadComponent = computed(() => {
   if (!notification.value) return null
   const category = notification.value.notificationCategory
@@ -170,7 +165,6 @@ const fetchNotification = async () => {
     const response = await api.get(`/api/notification/user/notifications/${notificationId}`)
     notification.value = response.data
     
-    // Загрузка отправителя
     const senderLogin = notification.value.senderUserName || notification.value.senderLogin;
     if (senderLogin) {
         try {
@@ -304,7 +298,6 @@ onMounted(() => {
 
 .dynamic-actions-area { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
 
-/* СТИЛИ ДЛЯ ВНУТРЕННИХ КОМПОНЕНТОВ */
 :deep(.notification-body) {
   display: flex; gap: 16px; padding: 16px; border-radius: 12px;
   border: 1px solid transparent; background: #fff; transition: all 0.2s;
@@ -325,7 +318,6 @@ onMounted(() => {
 }
 :deep(.btn:hover) { opacity: 0.9; }
 
-/* Темы компонентов (цвета) */
 :deep(.request-theme), :deep(.task-theme) { background-color: #f0f9ff; border-color: #bae6fd; }
 :deep(.request-theme .icon-area), :deep(.task-theme .icon-area) { background-color: #e0f2fe; color: #0284c7; }
 :deep(.btn-primary), :deep(.btn-blue) { background-color: #0284c7; color: white; }
@@ -353,7 +345,6 @@ onMounted(() => {
     .content-card, .details-nav { width: 100%; max-width: 600px; }
 }
 
-/* Фиксы для отображения внутренних карточек задач на мобилке */
 :deep(.task-details-box) { margin-top: 15px; }
 :deep(.task-badges) { margin-top: 10px; }
 </style>

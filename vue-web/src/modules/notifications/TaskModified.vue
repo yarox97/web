@@ -85,7 +85,6 @@ const assignerName = computed(() => {
   return props.payload.AssignerFullName || 'Management';
 });
 
-// Хелпер для форматирования штрафов
 const formatPenaltyString = (val, type) => {
   const v = Number(val);
   if (!type || type === 'None' || isNaN(v) || v === 0) return 'None';
@@ -100,22 +99,18 @@ const formatPenaltyType = (type) => {
   return type;
 };
 
-// === ВЫЧИСЛЕНИЕ ИЗМЕНЕНИЙ (CHANGES) ===
 const changes = computed(() => {
   const p = props.payload;
   const diffs = [];
 
-  // Название
   if (p.OldTaskTitle !== p.NewTaskTitle) {
     diffs.push({ label: 'Title', oldVal: p.OldTaskTitle, newVal: p.NewTaskTitle });
   }
 
-  // Описание (не выводим текст полностью, просто пишем Updated, так как он может быть длинным)
   if (p.OldDescription !== p.NewDescription) {
     diffs.push({ label: 'Description', oldVal: null, newVal: 'Updated' });
   }
 
-  // Дедлайн
   if (p.OldEndDateTime !== p.NewEndDateTime) {
     diffs.push({ 
       label: 'Deadline', 
@@ -124,12 +119,10 @@ const changes = computed(() => {
     });
   }
 
-  // Приоритет
   if (p.OldTaskPriority !== p.NewTaskPriority) {
     diffs.push({ label: 'Priority', oldVal: p.OldTaskPriority, newVal: p.NewTaskPriority });
   }
 
-  // Штраф
   const oldPenalty = formatPenaltyString(p.OldTaskPenaltyValue, p.OldTaskPenaltyType);
   const newPenalty = formatPenaltyString(p.NewTaskPenaltyValue, p.NewTaskPenaltyType);
   if (oldPenalty !== newPenalty) {
@@ -158,7 +151,6 @@ const viewTask = () => {
 </script>
 
 <style scoped>
-/* --- СТИЛИ ДЛЯ БЛОКА ИЗМЕНЕНИЙ --- */
 .changelog-box {
   background-color: #ffffff;
   border: 1px dashed #fdba74;
@@ -181,7 +173,7 @@ const viewTask = () => {
   align-items: center;
   font-size: 0.85rem;
   margin-bottom: 6px;
-  flex-wrap: wrap; /* Для мобилок */
+  flex-wrap: wrap; 
 }
 
 .changelog-item:last-child {
@@ -218,9 +210,8 @@ const viewTask = () => {
   border-radius: 4px;
 }
 
-/* --- ОСТАЛЬНЫЕ СТИЛИ (КАРТОЧКА ЗАДАЧИ) --- */
 .task-details-box {
-  background-color: #f8fafc; /* Вернул серый цвет, чтобы не сливалось с оранжевым логом */
+  background-color: #f8fafc; 
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 16px;

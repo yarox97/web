@@ -1,12 +1,11 @@
 <script setup>
-import { computed, onMounted, ref, reactive } from 'vue';
+import { computed, onMounted, ref, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { getAvatar } from '@/utils/getAvatar';
 import { useExternalProfile } from '@/modules/profile/composables/useExternalProfile';
 import api from '@/services/api';
 
-// Компоненты
 import SalaryPiechart from '@/components/profile/SalaryPiechart.vue';
 import ActivityBarChart from '@/components/profile/ActivityBarChart.vue';
 import Spinner from '@/components/shared/Spinner.vue';
@@ -16,8 +15,6 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
-// --- БАЗОВАЯ ЛОГИКА ПРОФИЛЯ ---
-// Определяем, смотрит ли пользователь свой профиль
 const isMyProfile = computed(() => {
   if (route.path.includes('/profile/me')) return true;
   if (!route.params.username) return true; 
@@ -56,7 +53,6 @@ const handleUserUpdated = async () => {
   await fetchProfile();
 };
 
-// --- ЛОГИКА "MY CLUBS" ---
 const clubsPage = ref(1);
 const clubsPageSize = ref(3); 
 
@@ -84,7 +80,6 @@ const goToClub = (clubId) => {
   router.push({ name: 'ClubDetails', params: { id: clubId } });
 };
 
-// --- ЛОГИКА "PLAYER ATTRIBUTES" ---
 const isEditingAttr = ref(false);
 const isSavingAttr = ref(false);
 
@@ -177,11 +172,42 @@ const saveAttributes = async () => {
   }
 };
 
-// --- СТАТИСТИКА ЗАДАЧ (Берем готовые данные из DTO) ---
-// Примечание: Убедитесь, что свойства в DTO приходят именно с такими названиями (учитывайте регистр!)
 const matchesPlayed = computed(() => displayedUser.value?.matchesPlayed || displayedUser.value?.MatchesPlayed || 0);
 const tasksFinished = computed(() => displayedUser.value?.tasksFinished || displayedUser.value?.TasksFinished || 0);
 const taskCompletionRate = computed(() => displayedUser.value?.taskCompletionRate || displayedUser.value?.TaskCompletionRate || 0);
+
+const trendLabels = ref([]);
+const trendTasks = ref([]);
+const trendMatches = ref([]);
+const isTrendsLoading = ref(true);
+
+const fetchTrends = async (userId) => {
+  if (!userId) return;
+  
+  isTrendsLoading.value = true;
+  try {
+    const response = await api.get(`/api/user/tasks-trends?userId=${userId}`);
+    
+    const data = response.data?.value || response.data; 
+
+    if (data) {
+      trendLabels.value = data.labels || [];
+      trendTasks.value = data.tasksTrend || [];
+      trendMatches.value = data.matchesTrend || [];
+    }
+  } catch (error) {
+    console.error("Failed to load activity trends", error);
+  } finally {
+    isTrendsLoading.value = false;
+  }
+};
+
+watch(() => displayedUser.value, (newUser) => {
+  const userId = newUser?.id || newUser?.userId;
+  if (userId) {
+    fetchTrends(userId);
+  }
+}, { immediate: true });
 
 onMounted(() => {
   fetchProfile();
@@ -382,9 +408,12 @@ onMounted(() => {
         <div class="card chart-card activity-card">
            <h3 class="section-title">Activity Trend (Last 6 Months)</h3>
            <div class="chart-box">
+              <Spinner v-if="isTrendsLoading" />
               <ActivityBarChart 
-                 :matches-total="matchesPlayed" 
-                 :tasks-total="tasksFinished" 
+                 v-else
+                 :labels="trendLabels" 
+                 :tasksTrend="trendTasks" 
+                 :matchesTrend="trendMatches" 
               />
            </div>
         </div>
@@ -488,7 +517,6 @@ onMounted(() => {
     border-color: #fca5a5;
 }
 
-/* --- СЕТКА ДЛЯ РЯДОВ --- */
 .grid-row {
   display: grid;
   grid-template-columns: 1fr; 
@@ -497,23 +525,19 @@ onMounted(() => {
 }
 
 @media (min-width: 1024px) {
-  /* Ряд 1: Если профиль СВОЙ (3 блока) -> Атрибуты пошире, Зарплата и Клубы поуже */
   .grid-top-3 {
     grid-template-columns: 1fr 1.2fr 1.2fr; 
   }
   
-  /* Ряд 1: Если профиль ЧУЖОЙ (2 блока) -> Атрибуты и Клубы */
   .grid-top-2 {
     grid-template-columns: 1.2fr 2fr; 
   }
-  
-  /* Ряд 2: Активность пошире, Достижения поуже */
+
   .grid-bottom {
     grid-template-columns: 2fr 1.2fr; 
   }
 }
 
-/* --- СТИЛИ ДЛЯ ГРАФИКОВ --- */
 .chart-card {
   padding: 24px;
   display: flex;
@@ -548,7 +572,6 @@ onMounted(() => {
   transition: height 0.3s;
 }
 
-/* --- АТРИБУТЫ ИГРОКА --- */
 .attr-card {
   padding: 24px;
   display: flex;
@@ -648,7 +671,6 @@ onMounted(() => {
   background: #eff6ff;
 }
 
-/* --- ФОРМА АТРИБУТОВ --- */
 .attr-form {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -737,7 +759,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* --- СТИЛИ ДЛЯ КЛУБОВ --- */
 .clubs-card {
   padding: 24px;
   display: flex;
@@ -832,7 +853,7 @@ onMounted(() => {
 }
 
 .view-btn {
-  padding: 8px 16px; /* Чуть уменьшен padding для компактности в боковой панели */
+  padding: 8px 16px;
   background-color: #f8f9fa;
   border: 1px solid #eee; 
   border-radius: 8px;
@@ -842,16 +863,15 @@ onMounted(() => {
   cursor: pointer; 
   transition: all 0.2s; 
   white-space: nowrap;
-  margin-left: auto; /* Чтобы кнопка прижалась вправо */
+  margin-left: auto;
 }
 
 .view-btn:hover { 
-  background-color: #007bff; /* Синий цвет при наведении, как в оригинале */
+  background-color: #007bff; 
   color: white; 
   border-color: #007bff; 
 }
 
-/* --- ПАГИНАЦИЯ --- */
 .pagination-footer {
   display: flex;
   justify-content: center;
@@ -893,7 +913,7 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* --- СТИЛИ ДЛЯ НОВОГО БЛОКА СТАТИСТИКИ --- */
+
 .stats-card {
   padding: 24px;
   display: flex;
@@ -911,7 +931,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  background: white; /* Делаем фон карточки белым для чистоты */
+  background: white; 
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   transition: transform 0.2s, box-shadow 0.2s;
@@ -924,22 +944,20 @@ onMounted(() => {
 }
 
 .stat-icon {
-  width: 36px; /* Уменьшили размер (был 48px) */
+  width: 36px;
   height: 36px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem; /* Сделали эмодзи меньше (был 1.5rem) */
+  font-size: 1.1rem; 
   margin-right: 14px;
-  background-color: #f1f5f9; /* Нейтральный светло-серый фон для всех иконок */
-  color: #64748b; /* Приглушенный цвет */
-  opacity: 0.85; /* Слегка приглушили яркость самих эмодзи */
-  filter: grayscale(30%); /* Убрали лишнюю "кричащую" цветность */
+  background-color: #f1f5f9;
+  color: #64748b;
+  opacity: 0.85; 
+  filter: grayscale(30%);
 }
 
-/* Переопределяем цвета, чтобы они больше не красили фон, 
-   но оставляем классы, чтобы не пришлось менять HTML */
 .bg-blue-light, .bg-green-light, .bg-yellow-light {
   background: #f1f5f9; 
 }

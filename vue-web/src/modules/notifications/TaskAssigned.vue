@@ -64,12 +64,11 @@ const props = defineProps({
 
 const router = useRouter()
 
-// Изменено на AssignerFullName, как приходит в JSON
 const assignerName = computed(() => {
   return props.payload.AssignerFullName || 'Management';
 });
 
-// Добавлено преобразование Number(), так как с бэка приходит строка "0"
+
 const hasPenalty = computed(() => {
   const type = props.payload.TaskPenaltyType;
   const val = Number(props.payload.TaskPenaltyValue);
@@ -77,12 +76,11 @@ const hasPenalty = computed(() => {
 });
 
 const formatPenaltyType = (type) => {
-  if (type === 'Financial') return 'USD'; // Можно заменить на вашу валюту
+  if (type === 'Financial') return 'USD'; 
   if (type === 'Points') return 'pts';
   return type;
 };
 
-// Добавлено распознавание слова 'middle', которое приходит с бэка
 const priorityClass = computed(() => {
   const p = String(props.payload.TaskPriority).toLowerCase();
   if (p === 'high' || p === 'urgent') return 'priority-high';
@@ -121,7 +119,7 @@ const viewTask = () => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-word; /* Помогает, если в тексте нет пробелов (как в "вапвапвапва") */
+  word-break: break-word; 
 }
 
 .task-badges {
@@ -156,7 +154,6 @@ const viewTask = () => {
   color: #ea580c;
 }
 
-/* Middle / Medium приоритет */
 .priority-medium {
   background-color: #fef9c3;
   color: #ca8a04;

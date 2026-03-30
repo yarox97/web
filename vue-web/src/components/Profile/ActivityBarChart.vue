@@ -19,55 +19,36 @@ import {
 } from 'chart.js';
 import { Line } from 'vue-chartjs';
 
-// Регистрируем компоненты Chart.js, включая Filler для заливки под линией
+// Регистрируем компоненты Chart.js
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
+// Определяем входящие данные (props), которые придут из API
 const props = defineProps({
-  matchesTotal: { type: Number, default: 0 },
-  tasksTotal: { type: Number, default: 0 }
+  labels: { 
+    type: Array, 
+    default: () => [] 
+  },
+  tasksTrend: { 
+    type: Array, 
+    default: () => [] 
+  },
+  matchesTrend: { 
+    type: Array, 
+    default: () => [] 
+  }
 });
 
-// Генерируем названия последних 6 месяцев (например: "Sep", "Oct", "Nov"...)
-const getLast6Months = () => {
-  const months = [];
-  const d = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const pastDate = new Date(d.getFullYear(), d.getMonth() - i, 1);
-    months.push(pastDate.toLocaleString('en-US', { month: 'short' }));
-  }
-  return months;
-};
-
-// Функция для красивого распределения общего числа по 6 месяцам (имитация активности)
-const distributeData = (total) => {
-  if (total === 0) return [0, 0, 0, 0, 0, 0];
-  // Весовые коэффициенты для имитации "живого" графика (спады и подъемы)
-  const weights = [0.10, 0.15, 0.25, 0.10, 0.20, 0.20]; 
-  
-  let distributed = weights.map(w => Math.round(w * total));
-  
-  // Корректируем последний месяц, чтобы сумма точно совпадала с total
-  const sum = distributed.reduce((a, b) => a + b, 0);
-  const diff = total - sum;
-  distributed[5] += diff; 
-  
-  // Защита от отрицательных чисел из-за округления
-  return distributed.map(val => Math.max(0, val));
-};
-
+// Формируем данные для графика. 
+// Используем computed, чтобы график перерисовывался при получении новых данных с бэка.
 const chartData = computed(() => {
-  const labels = getLast6Months();
-  const tasksTrend = distributeData(props.tasksTotal);
-  const matchesTrend = distributeData(props.matchesTotal);
-
   return {
-    labels,
+    labels: props.labels,
     datasets: [
       {
         label: 'Tasks Completed',
-        data: tasksTrend,
-        borderColor: '#10b981', // Зеленый
-        backgroundColor: 'rgba(16, 185, 129, 0.15)', // Полупрозрачный зеленый для заливки
+        data: props.tasksTrend,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
         pointBackgroundColor: '#10b981',
         pointBorderColor: '#ffffff',
         pointHoverBackgroundColor: '#ffffff',
@@ -75,13 +56,13 @@ const chartData = computed(() => {
         borderWidth: 3,
         pointRadius: 4,
         pointHoverRadius: 6,
-        fill: true, // Включаем заливку под графиком
-        tension: 0.4 // Плавные изгибы линии (сглаживание)
+        fill: true,
+        tension: 0.4
       },
       {
         label: 'Matches Played',
-        data: matchesTrend,
-        borderColor: '#3b82f6', // Синий
+        data: props.matchesTrend,
+        borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.15)',
         pointBackgroundColor: '#3b82f6',
         pointBorderColor: '#ffffff',
@@ -97,11 +78,12 @@ const chartData = computed(() => {
   };
 });
 
+// Настройки внешнего вида графика (оставляем без изменений)
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   interaction: {
-    mode: 'index', // При наведении показывает значения сразу обеих линий
+    mode: 'index',
     intersect: false,
   },
   plugins: {
@@ -125,7 +107,6 @@ const chartOptions = {
       displayColors: true,
       usePointStyle: true
     },
-    // Отключаем плагин datalabels, если он зарегистрирован глобально
     datalabels: { display: false }
   },
   scales: {
@@ -135,14 +116,14 @@ const chartOptions = {
     },
     y: {
       beginAtZero: true,
-      border: { display: false }, // Убирает жирную линию оси Y
+      border: { display: false },
       grid: {
         color: '#f1f5f9',
-        drawTicks: false, // Убирает засечки
+        drawTicks: false,
       },
       ticks: {
         color: '#94a3b8',
-        stepSize: 1, // Чтобы не было дробных матчей
+        stepSize: 1, // Шаг оси Y. Если задач в месяц будет много (например 50-100), эту строчку можно удалить для автомасштабирования
         padding: 10
       }
     }
@@ -154,7 +135,7 @@ const chartOptions = {
 .trend-chart-container {
   width: 100%;
   height: 100%;
-  min-height: 280px; /* Даем чуть больше высоты для красивых кривых */
+  min-height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;

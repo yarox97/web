@@ -64,12 +64,10 @@ const props = defineProps({
 
 const router = useRouter()
 
-// Читаем имя из AssignerFullName
 const assignerName = computed(() => {
   return props.payload.AssignerFullName || 'Management';
 });
 
-// Проверяем штраф, конвертируя строку "0" в число
 const hasPenalty = computed(() => {
   const type = props.payload.TaskPenaltyType;
   const val = Number(props.payload.TaskPenaltyValue);
@@ -101,7 +99,6 @@ const viewTask = () => {
   margin: 12px 0 16px 0;
 }
 
-/* Оранжевая рамка и фон для возвращенной задачи */
 .returned-box {
   background-color: #ffffff;
   border: 1px solid #ffedd5;
@@ -125,7 +122,7 @@ const viewTask = () => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-word; /* Важно для строк типа "dsffsfsdfsdfsdfsdfsdfsfsdfs" */
+  word-break: break-word; 
 }
 
 .task-badges {

@@ -162,16 +162,12 @@ const viewMode = ref('my')
 const userClubs = computed(() => authStore.user?.clubDtos || [])
 const selectedClubId = ref(null)
 
-// НОВОЕ: Проверка прав пользователя на просмотр/создание задач клуба
 const canViewClubTasks = computed(() => {
   const user = authStore.user;
   if (!user) return false;
   
-  // Если глобальный админ — может видеть всё
   if (user.role === 'Admin' || user.Role === 'Admin') return true;
   
-  // Ищем клубы, где юзер имеет руководящую роль. 
-  // (Добавьте нужные роли в этот массив, если они у вас называются иначе)
   const allowedRoles = ['president', 'creator', 'coach'];
   
   return userClubs.value.some(club => {
@@ -181,7 +177,7 @@ const canViewClubTasks = computed(() => {
 })
 
 const currentPage = ref(1)
-const pageSize = ref(5) // Вернул на 10 для удобства, можете изменить
+const pageSize = ref(5) 
 const totalItems = ref(0)
 const totalPages = computed(() => Math.ceil(totalItems.value / pageSize.value))
 
@@ -289,14 +285,11 @@ const onTaskCreated = () => {
 
 
 const isTaskLessRelevant = (task) => {
-  // 1. Если задача уже выполнена, подтверждена или просрочена по статусу
   if (task.status) {
     const s = task.status.toLowerCase();
     if (s === 'completed' || s === 'confirmed' || s === 'overdued') return true;
   }
   
-  // 2. Если дедлайн физически прошел (на случай Club Tasks, где мы не смотрим на статус конкретного юзера)
-  // В зависимости от вашего DTO дата может лежать в task.endDate или task.taskSchedule?.endDate
   const targetDate = task.endDate || task.taskSchedule?.endDate; 
   if (targetDate) {
     const endDate = new Date(targetDate);
@@ -308,7 +301,6 @@ const isTaskLessRelevant = (task) => {
 };
 
 onMounted(async () => {
-  // Дожидаемся загрузки пользователя, если его еще нет
   if (!authStore.isAuthenticated) {
     await authStore.checkAuth();
   }
@@ -316,7 +308,6 @@ onMounted(async () => {
   const queryMode = route.query.mode;
   const queryClubId = route.query.clubId;
 
-  // Если пытаются перейти на club mode через URL, но прав нет — принудительно переключаем на 'my'
   if (queryMode === 'club' && canViewClubTasks.value) {
     viewMode.value = 'club';
     
@@ -461,14 +452,12 @@ onMounted(async () => {
   opacity: 0.9;
 }
 
-/* Делаем неактуальные задачи полупрозрачными и слегка серыми */
 .task-faded {
   opacity: 0.55;
   filter: grayscale(40%);
   transition: all 0.3s ease;
 }
 
-/* При наведении возвращаем яркость, чтобы удобно было читать детали */
 .task-faded:hover {
   opacity: 0.95;
   filter: grayscale(0%);

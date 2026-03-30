@@ -94,14 +94,12 @@ import api from '@/services/api'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { formatDate } from '@/utils/dateFormater'
 
-// --- ИМПОРТ КОМПОНЕНТОВ ---
 import ClubJoinRequest from '@/modules/notifications/ClubJoinRequest.vue'
 import ClubJoinApproved from '@/modules/notifications/ClubJoinApproved.vue'
 import ClubJoinRejected from '@/modules/notifications/ClubJoinRejected.vue'
 import ContractAssigned from '@/modules/notifications/ContractAssigned.vue'
 import KickedFromClubByClub from '@/modules/notifications/KickedFromClubByClub.vue'
 
-// Новые компоненты для задач
 import TaskAssigned from '@/modules/notifications/TaskAssigned.vue'
 import TaskModified from '@/modules/notifications/TaskModified.vue'
 import TaskOverdue from '@/modules/notifications/TaskOverdue.vue'
@@ -113,14 +111,13 @@ const router = useRouter()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 
-// --- СЛОВАРЬ КОМПОНЕНТОВ ---
 const notificationComponents = {
   'ClubJoinRequest': ClubJoinRequest,
   'ClubJoinApproved': ClubJoinApproved,
   'ClubJoinRejected': ClubJoinRejected,
   'ContractAssigned': ContractAssigned,
   'KickedFromClubByClub': KickedFromClubByClub,
-  // Добавленные задачи
+
   'TaskAssigned': TaskAssigned,
   'TaskModified': TaskModified,
   'TaskOverdue': TaskOverdue,
@@ -129,7 +126,6 @@ const notificationComponents = {
   'TaskReturned': TaskReturned
 }
 
-// --- STATE ---
 const notifications = ref([])
 const loading = ref(false)
 const selectedNotification = ref(null)
@@ -153,7 +149,6 @@ const currentPayload = computed(() => {
   }
 })
 
-// Вычисляем, какой компонент рендерить
 const currentPayloadComponent = computed(() => {
   if (!selectedNotification.value) return null
   const category = selectedNotification.value.notificationCategory
@@ -232,7 +227,6 @@ onMounted(async () => {
   loadNotifications();
 })
 
-// ДОБАВЛЕНЫ ЯРЛЫКИ ЗАДАЧ
 const categoryLabels = {
   'ClubJoinRequest': 'Join Request',       
   'ClubJoinApproved': 'Approved',          
@@ -256,15 +250,14 @@ const formatCategory = (cat) => {
 }
 
 const getCategoryClass = (cat) => {
-  // Синий (обычные запросы и назначения)
   if (['ClubJoinRequest', 'Informative', 'TaskAssigned'].includes(cat)) return 'badge-blue';
-  // Красный (отклонения, кики, просрочки)
+
   if (['ClubJoinRejected', 'Alert', 'KickedFromClubByClub', 'TaskOverdue'].includes(cat)) return 'badge-red';
-  // Зеленый (выполнения, одобрения)
+
   if (['ClubJoinApproved', 'TaskCompleted'].includes(cat)) return 'badge-green';
-  // Фиолетовый (контракты и подтверждения)
+
   if (['ContractAssigned', 'TaskConfirmed'].includes(cat)) return 'badge-purple';
-  // Оранжевый (изменения, возврат на доработку)
+
   if (['TaskModified', 'TaskReturned'].includes(cat)) return 'badge-orange';
   
   return 'badge-gray'
@@ -272,7 +265,6 @@ const getCategoryClass = (cat) => {
 </script>
 
 <style scoped>
-/* --- ОСНОВНАЯ РАЗМЕТКА --- */
 .home-wrapper {
   padding: 20px;
   height: 92vh; 

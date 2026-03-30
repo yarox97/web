@@ -6,14 +6,12 @@ import api from '@/services/api';
 import { formatDate } from '@/utils/dateFormater';
 import Spinner from '@/components/shared/Spinner.vue';
 
-// Импортируем authStore
 import { useAuthStore } from '@/stores/authStore'; 
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore(); 
 
-// --- STATE: Contract & Payslips ---
 const contract = ref(null);
 const isContractLoading = ref(true);
 const contractError = ref(null);
@@ -36,7 +34,6 @@ const adjustmentsPageSize = ref(5);
 const isAdjustmentsLoading = ref(false);
 const isReverting = ref(false);
 
-// --- ПРОВЕРКА РОЛИ ИЗ AUTHSTORE ---
 const currentUserRole = computed(() => {
   if (!contract.value?.clubId || !authStore.user) return null;
   const clubs = authStore.user.clubDtos || authStore.user.clubs || [];
@@ -52,7 +49,6 @@ const canManageAdjustments = computed(() => {
   return currentUserRole.value === 'President' || currentUserRole.value === 'Creator';
 });
 
-// --- PAYSLIP ACTIONS ---
 const markAsPaid = async (payslipId) => {
   if (!confirm("Confirm marking this payslip as Paid?")) return;
 
@@ -84,7 +80,6 @@ const handleRevertAdjustment = async (adjustmentId) => {
   }
 };
 
-// --- FORMATTERS & CALCULATIONS ---
 const formatCurrency = (amount, currency) => {
   if (amount === null || amount === undefined) return 'N/A';
   const currCode = currency !== undefined ? currency : (contract.value?.currency || 0);
@@ -99,17 +94,14 @@ const getMonthName = (monthNum) => {
   return date.toLocaleString('en-US', { month: 'long' });
 };
 
-// Определение стилей на основе Enum
 const getAdjustmentStyle = (type) => {
   const t = String(type).toLowerCase();
-  // Учитываем возможную опечатку BounsPercent
   if (t.includes('bonus') || t.includes('bouns') || t.includes('premia') || t.includes('reward')) {
     return { color: '#047857', bg: '#ecfdf5', sign: '+' };
   }
   return { color: '#b91c1c', bg: '#fef2f2', sign: '-' }; 
 };
 
-// Красивое отображение типа
 const formatAdjustmentType = (type) => {
   const t = String(type);
   if (t === 'BonusValue') return 'Bonus';
@@ -119,19 +111,17 @@ const formatAdjustmentType = (type) => {
   return t;
 };
 
-// Проверка, является ли корректировка процентной
 const isPercentAdjustment = (type) => {
   const t = String(type).toLowerCase();
   return t.includes('percent');
 };
 
-// Подсчет конкретной суммы из BaseSalary для процентных корректировок
 const calculateActualAmount = (adj) => {
   if (isPercentAdjustment(adj.type)) {
     const baseSalary = selectedPayslip.value?.baseSalary || 0;
     return (baseSalary * adj.amount) / 100;
   }
-  return adj.amount; // Если это Value, возвращаем как есть
+  return adj.amount; 
 };
 
 // --- DATA FETCHING ---

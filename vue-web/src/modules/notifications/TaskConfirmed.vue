@@ -64,26 +64,22 @@ const props = defineProps({
 
 const router = useRouter()
 
-// Обновлено на ConfirmerFullName, как приходит в JSON
 const confirmerName = computed(() => {
   return props.payload.ConfirmerFullName || 'Management';
 });
 
-// Проверка штрафа
 const hasPenalty = computed(() => {
   const type = props.payload.TaskPenaltyType;
   const val = Number(props.payload.TaskPenaltyValue);
   return type && type !== 'None' && val > 0;
 });
 
-// Добавлена обработка 'ValueFine' (как в вашем JSON)
 const formatPenaltyType = (type) => {
   if (type === 'Financial' || type === 'ValueFine') return 'USD'; 
   if (type === 'Points') return 'pts';
   return type;
 };
 
-// Распознавание 'Highest' (как в вашем JSON)
 const priorityClass = computed(() => {
   const p = String(props.payload.TaskPriority).toLowerCase();
   if (p === 'high' || p === 'highest' || p === 'urgent') return 'priority-high';
@@ -98,8 +94,8 @@ const viewTask = () => {
 
 <style scoped>
 .task-details-box {
-  background-color: #ffffff; /* Белый фон на фоне светло-фиолетовой карточки */
-  border: 1px solid #e9d5ff; /* Фиолетовая обводка */
+  background-color: #ffffff;
+  border: 1px solid #e9d5ff; 
   border-radius: 10px;
   padding: 16px;
   margin: 12px 0 16px 0;
@@ -142,7 +138,6 @@ const viewTask = () => {
   font-weight: 600;
 }
 
-/* Бейджики */
 .confirmed-badge {
   background-color: #f3e8ff;
   color: #7e22ce;

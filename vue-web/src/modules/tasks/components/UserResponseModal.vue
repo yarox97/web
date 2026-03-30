@@ -114,7 +114,6 @@ const getStatusClass = (status) => {
 
 const formatDateTime = (d) => new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 
-// --- ЛОГИКА КНОПОК ---
 
 const handleReturn = async () => {
   if (!confirm("Return this task to the user?")) return;
@@ -138,7 +137,6 @@ const handleConfirm = async (finalStatus) => {
 
   isProcessing.value = true;
   try {
-    // Если контракта нет, всегда отправляем applyPenalty = false, даже если каким-то чудом чекбокс был нажат
     const shouldApplyPenalty = props.receiver.hasActiveContract ? applyPenalty.value : false;
     
     await tasksService.confirmUserTask(props.receiver.userTaskId, finalStatus, shouldApplyPenalty);

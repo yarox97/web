@@ -21,7 +21,6 @@ const props = defineProps({
 
 const emit = defineEmits(['user-updated']);
 
-// --- STATE ---
 const isEditing = ref(false);
 const isSaving = ref(false);
 
@@ -37,11 +36,9 @@ const errors = reactive({
   email: ''
 });
 
-// Переменные для проверки уникальности Email 
 const isEmailAvailable = ref(null);
 const checkingEmail = ref(false);
 
-// --- COMPUTED ---
 const displayName = computed(() => {
   const u = props.user;
   if (!u) return 'Unknown';
@@ -51,12 +48,10 @@ const displayName = computed(() => {
   return u.userName;
 });
 
-// Получаем клубы пользователя (учитываем разные варианты названия поля с бэкенда)
 const userClubs = computed(() => {
   return props.user?.clubDtos || props.user?.clubs || [];
 });
 
-// Проверка валидности формы для блокировки кнопки
 const isFormValid = computed(() => {
   if (!form.firstName.trim() || !form.lastName.trim()) return false;
   if (!form.email.trim() || !validateEmail(form.email)) return false;
@@ -70,7 +65,6 @@ const validateEmail = (email) => {
   return re.test(email);
 };
 
-// --- EMAIL CHECKING (через debounce) ---
 const checkEmail = async (value) => {
   const currentEmail = value.trim();
   const originalEmail = props.user?.email || '';
@@ -84,7 +78,6 @@ const checkEmail = async (value) => {
   isEmailAvailable.value = null;
 
   try {
-    // 1. ИСПОЛЬЗУЕМ ПРАВИЛЬНЫЙ ПУТЬ КАК В РЕГИСТРАЦИИ
     const response = await api.get(`/api/auth/email-check`, { 
       params: { email: currentEmail } 
     });
@@ -95,15 +88,7 @@ const checkEmail = async (value) => {
       result = result.toLowerCase() === 'true';
     }
 
-    // 2. ИСПОЛЬЗУЕМ ЛОГИКУ ИЗ РЕГИСТРАЦИИ:
-    // Если метод IsEmailFree возвращает true (свободен), убираем ! перед Boolean
-    // Если метод возвращает true когда ЗАНЯТ, оставляем с !
-    // (По умолчанию я оставил логику из вашего RegisterView, где стояло !response.data)
     isEmailAvailable.value = !Boolean(result);
-
-    // *ПРИМЕЧАНИЕ*: Если ваш новый метод `IsEmailFree` всё-таки возвращает true когда email СВОБОДЕН, 
-    // просто замените строчку выше на:
-    // isEmailAvailable.value = Boolean(result);
 
   } catch (error) {
     console.error("Email check failed:", error);
@@ -115,14 +100,12 @@ const checkEmail = async (value) => {
 
 const checkEmailDebounced = debounce(checkEmail, 500);
 
-// Следим за полем email
 watch(() => form.email, (newValue) => {
   errors.email = '';
   checkEmailDebounced(newValue);
 });
 
 
-// --- METHODS ---
 const startEdit = () => {
   form.firstName = props.user.firstName || '';
   form.lastName = props.user.lastName || '';
@@ -328,7 +311,6 @@ const saveChanges = async () => {
 </template>
 
 <style scoped>
-/* Основной контейнер */
 .card {
   background: white;
   border-radius: 12px;
