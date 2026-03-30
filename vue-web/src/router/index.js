@@ -35,7 +35,7 @@ const router = createRouter({
       component: RegisterView
     },
     {
-      path: '/error/:code?', // :code? значит параметр необязателен
+      path: '/error/:code?', 
       name: 'error',
       component: ErrorView,
     },

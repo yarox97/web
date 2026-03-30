@@ -1,7 +1,5 @@
 <template>
   <div class="page-container">
-    <div v-if="activeMenuContractId" class="menu-backdrop" @click="closeContractMenu"></div>
-
     <div v-if="loading" class="state-box"><Spinner></Spinner></div>
     <div v-else-if="error" class="state-box error">
       <div class="error-icon">⚠️</div>
@@ -71,17 +69,10 @@
               </div>
             </div>
 
-            <div v-if="isEditing" class="card edit-card">
-              <h3 class="section-title">Club Settings</h3>
-              <div class="form-group"><label>Avatar URL</label><input v-model="editForm.avatarURL" class="edit-input" /></div>
-              <div class="form-group"><label>Background URL</label><input v-model="editForm.backGroundURL" class="edit-input" /></div>
-              <div class="form-group"><label>Volleybox Profile URL</label><input v-model="editForm.volleyBoxUrl" class="edit-input" /></div>
-            </div>
-
             <div class="card info-card">
               <h3 class="section-title">About the Club</h3>
               <template v-if="isEditing">
-                <textarea v-model="editForm.description" class="edit-textarea" rows="8"></textarea>
+                <textarea v-model="editForm.description" class="edit-textarea" rows="8" placeholder="Club Description"></textarea>
               </template>
               <template v-else>
                 <div v-if="club.description" class="club-desc">{{ club.description }}</div>
@@ -245,15 +236,6 @@
             <div class="contracts-grid">
                 <div v-for="contract in contracts" :key="contract.id" class="card contract-card clickable-card" @click="goToContractDetails(contract.id)">
                     
-                    <div class="card-menu" v-if="canEdit">
-                        <button class="menu-btn" @click.stop="toggleContractMenu(contract.id)">⋮</button>
-                        <div v-if="activeMenuContractId === contract.id" class="menu-dropdown">
-                            <button class="menu-item menu-item-danger" @click.stop="terminateContract(contract)">
-                                Terminate Contract
-                            </button>
-                        </div>
-                    </div>
-
                     <div class="contract-header">
                         <div class="req-avatar compact-avatar">
                             <img :src="getAvatar(contract.memberName)" alt="User" />
@@ -393,7 +375,6 @@ const contractsLoaded = ref(false)
 const contractPage = ref(1)
 const contractPageSize = 10
 const contractTotal = ref(0)
-const activeMenuContractId = ref(null)
 
 // Create Contract State
 const showContractModal = ref(false)
@@ -467,10 +448,7 @@ const fetchClub = async () => {
 const startEdit = () => {
   editForm.value = {
     name: club.value.name,
-    description: club.value.description,
-    avatarURL: club.value.avatarURL,
-    backGroundURL: club.value.backGroundURL,
-    volleyBoxUrl: club.value.volleyBoxUrl || club.value.VolleyBoxUrl
+    description: club.value.description
   }
   isEditing.value = true
 }
@@ -598,35 +576,6 @@ const changeContractPage = (direction) => {
     if (direction === 'next') contractPage.value++;
     else if (direction === 'prev' && contractPage.value > 1) contractPage.value--;
     fetchContracts(true);
-}
-
-// --- Contract Actions ---
-const toggleContractMenu = (id) => {
-    if (activeMenuContractId.value === id) {
-        activeMenuContractId.value = null;
-    } else {
-        activeMenuContractId.value = id;
-    }
-}
-
-const closeContractMenu = () => {
-    activeMenuContractId.value = null;
-}
-
-const terminateContract = async (contract) => {
-    if(!confirm(`Are you sure you want to terminate the contract for ${contract.memberName} ${contract.memberSurname}? This cannot be undone.`)) {
-        return;
-    }
-
-    try {
-        await api.put(`/api/contracts/${contract.id}/end`); 
-        alert("Contract terminated.");
-        closeContractMenu();
-        await fetchContracts(true);
-    } catch (e) {
-        console.error(e);
-        alert("Failed to terminate contract.");
-    }
 }
 
 // --- Contract Creation Logic ---
@@ -830,7 +779,6 @@ const formatCurrency = (amount, currency) => {
 }
 
 const clubAvatar = computed(() => {
-    if (isEditing.value && editForm.value.avatarURL) return editForm.value.avatarURL;
     if (imageLoadError.value) return getAvatar(club.value?.name || 'Club');
     if (club.value?.avatarURL) return club.value.avatarURL;
     return getAvatar(club.value?.name || 'Club');
@@ -839,7 +787,7 @@ const clubAvatar = computed(() => {
 const onAvatarError = () => { imageLoadError.value = true; }
 
 const coverStyle = computed(() => {
-    const url = isEditing.value ? editForm.value.backGroundURL : club.value?.backGroundURL
+    const url = club.value?.backGroundURL;
     if (url) {
         return { backgroundImage: `url(${url})` }
     }
@@ -898,9 +846,6 @@ onMounted(async () => {
 .content-animate { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Menu Backdrop */
-.menu-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 90; background: transparent; }
-
 /* Nav */
 .nav-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
 .btn-back { background: white; border: 1px solid #e5e7eb; padding: 8px 16px; border-radius: 8px; color: #4b5563; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
@@ -953,9 +898,6 @@ onMounted(async () => {
 .stat-label { font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase; }
 .stat-value { font-size: 0.95rem; font-weight: 600; color: #111827; }
 
-.edit-card { padding: 25px; border-left: 4px solid #0ea5e9; }
-.section-title { font-size: 1.2rem; margin: 0 0 15px 0; color: #374151; }
-.meta-row { margin-top: 20px; padding-top: 15px; border-top: 1px solid #f3f4f6; color: #6b7280; font-size: 0.9rem; }
 .invite-card { background: linear-gradient(to right, #eff6ff, #ffffff); border-color: #bfdbfe; padding: 20px; }
 .code-box { margin-top: 10px; background: white; border: 2px dashed #93c5fd; border-radius: 12px; padding: 15px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; flex-wrap: wrap; gap: 10px; }
 .code-value { font-size: 1.5rem; font-weight: 800; color: #1e40af; font-family: monospace; word-break: break-all; }
@@ -977,7 +919,7 @@ onMounted(async () => {
 .me-badge { font-size: 0.75rem; color: #6b7280; font-weight: normal; background: #f3f4f6; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
 .member-actions { display: flex; align-items: center; justify-content: flex-end; min-width: 180px; }
 
-/* Manage Buttons (ALWAYS VISIBLE & COLORED) */
+/* Manage Buttons */
 .manage-buttons { display: flex; gap: 6px; margin-left: 12px; }
 .action-trigger { background: transparent; border: none; cursor: pointer; font-size: 1.1rem; padding: 6px; border-radius: 6px; transition: background 0.2s, color 0.2s; line-height: 1; color: #64748b; background-color: #f1f5f9; }
 .action-trigger:hover { color: #334155; background-color: #e2e8f0; }
@@ -1022,7 +964,7 @@ onMounted(async () => {
 .vb-card { height: 100%; padding: 0; display: flex; flex-direction: column; border-top: 4px solid #ef4444; }
 .vb-header, .vb-footer { padding: 10px 20px; }
 .widget-wrapper { background: white; flex: 1; position: relative; min-height: 250px; }
-.match-widget-iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+.match-widget-iframe {pointer-events: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
 
 /* Contracts */
 .contracts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 15px; }
@@ -1038,16 +980,6 @@ onMounted(async () => {
 .page-info { font-weight: 600; color: #6b7280; }
 .actions-header { margin-bottom: 15px; display: flex; justify-content: flex-end; }
 
-/* Contract Menu */
-.card-menu { position: absolute; top: 10px; right: 10px; z-index: 100; }
-.menu-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #9ca3af; padding: 0 5px; line-height: 1; border-radius: 4px; }
-.menu-btn:hover { background-color: #f3f4f6; color: #374151; }
-.menu-dropdown { position: absolute; top: 100%; right: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 160px; overflow: hidden; animation: fadeIn 0.1s; }
-.menu-item { display: block; width: 100%; text-align: left; padding: 10px 15px; background: none; border: none; font-size: 0.9rem; cursor: pointer; color: #374151; }
-.menu-item:hover { background-color: #f9fafb; }
-.menu-item-danger { color: #dc2626; }
-.menu-item-danger:hover { background-color: #fef2f2; }
-
 /* Modal */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.2s; }
 .modal-card { background: white; padding: 25px; border-radius: 12px; width: 500px; max-width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: slideUp 0.3s; }
@@ -1062,7 +994,6 @@ onMounted(async () => {
 .modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
 
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
 
 /* States */
 .state-box { padding: 60px; text-align: center; color: #9ca3af; background: white; border-radius: 16px; border: 1px dashed #e5e7eb; margin: 40px; }

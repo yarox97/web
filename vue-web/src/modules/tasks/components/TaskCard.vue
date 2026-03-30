@@ -55,10 +55,12 @@ const props = defineProps({
   }
 })
 
+// --- ФИНАНСЫ И ШТРАФЫ ---
 const isBonus = computed(() => ['ValuePremia', 'PercentPremia'].includes(props.task.penaltyType))
 const isPenalty = computed(() => ['ValueFine', 'PercentFine'].includes(props.task.penaltyType))
 const financialSymbol = computed(() => ['PercentFine', 'PercentPremia'].includes(props.task.penaltyType) ? '%' : '$')
 
+// --- ПРИОРИТЕТЫ ---
 const priorityClass = computed(() => {
   if (!props.task.taskPriority) return ''
   const p = props.task.taskPriority.toLowerCase()
@@ -68,10 +70,10 @@ const priorityClass = computed(() => {
   return ''
 })
 
-// 1. Получаем текущий статус задачи
-const currentStatus = computed(() => props.task.myStatus || props.task.taskStatus || 'Uncompleted')
+// --- СТАТУСЫ ---
+// Учитываем разные варианты нейминга свойств с бэкенда
+const currentStatus = computed(() => props.task.myStatus || props.task.taskStatus || props.task.status || 'Uncompleted')
 
-// 2. Безопасно проверяем флаг hasResponses из вашего JSON
 const hasResponses = computed(() => {
   if (props.task.hasResponses === true || props.task.HasResponses === true) return true;
   if (props.task.responses && props.task.responses.length > 0) return true;
@@ -79,7 +81,6 @@ const hasResponses = computed(() => {
   return false;
 })
 
-// 3. Вычисляем цвет CSS-класса
 const statusClass = computed(() => {
   if (props.hideStatus) return 'status-neutral'
   
@@ -96,7 +97,6 @@ const statusClass = computed(() => {
   return 'status-pending'; 
 })
 
-// 4. Вычисляем текст бейджика
 const formattedStatus = computed(() => {
   const s = currentStatus.value;
   
@@ -107,26 +107,32 @@ const formattedStatus = computed(() => {
   if (s === 'Returned') return 'Returned';
   if (s === 'Unconfirmed') return 'Awaiting Confirm';
   
-  // Если статус Uncompleted, и ЕСТЬ ответы -> Пишем "In Progress"
   if (s === 'Uncompleted' && hasResponses.value) return 'In Progress';
   
-  // Иначе пишем "Pending"
   return 'Pending';
 })
 
+// --- ДАТЫ И ДЕДЛАЙНЫ ---
+const getEndDate = () => {
+  // Проверяем все возможные варианты вложенности даты с бэкенда
+  return props.task.schedule?.endDate || props.task.taskSchedule?.endDate || props.task.endDate;
+}
+
 const isOverdue = computed(() => {
-  if (!props.task.schedule?.endDate) return false;
-  return new Date(props.task.schedule.endDate) < new Date() && currentStatus.value !== 'Completed' && currentStatus.value !== 'Confirmed';
+  const endDate = getEndDate();
+  if (!endDate) return false;
+  return new Date(endDate) < new Date() && currentStatus.value !== 'Completed' && currentStatus.value !== 'Confirmed';
 })
 
 const formattedDeadline = computed(() => {
-  if (!props.task.schedule?.endDate) return 'No Deadline'
-  return formatDate(props.task.schedule.endDate) 
+  const endDate = getEndDate();
+  if (!endDate) return 'No Deadline';
+  return formatDate(endDate);
 })
 </script>
 
 <style scoped>
-/* Базовые стили карточки оставляем как были... */
+/* Базовые стили карточки */
 .task-card {
   background: var(--color-background-soft, #ffffff);
   border-radius: 12px;
@@ -145,19 +151,30 @@ const formattedDeadline = computed(() => {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
 
-/* ЦВЕТА БОКОВОЙ ПОЛОСКИ ДЛЯ ВАШИХ ENUMS */
+/* Цвета боковой полоски (border-left) */
 .status-completed { border-left-color: var(--color-success, #28a745); }
 .status-failed { border-left-color: var(--color-danger, #dc3545); }
 .status-inprogress { border-left-color: #3b82f6; } 
 .status-pending { border-left-color: var(--color-warning, #f59e0b); } 
-.status-returned { border-left-color: #f97316; } /* Оранжевый для возвращенных */
-.status-unconfirmed { border-left-color: #8b5cf6; } /* Фиолетовый для ожидающих подтверждения админа */
+.status-returned { border-left-color: #f97316; } 
+.status-unconfirmed { border-left-color: #8b5cf6; } 
 .status-neutral { border-left-color: #cbd5e1; } 
 
-.task-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.task-title { margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--color-text-primary, #333); }
+/* Шапка карточки */
+.task-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: flex-start; 
+}
 
-/* ЦВЕТА БЕЙДЖЕЙ ДЛЯ ВАШИХ ENUMS */
+.task-title { 
+  margin: 0; 
+  font-size: 1.1rem; 
+  font-weight: 600; 
+  color: var(--color-text-primary, #333); 
+}
+
+/* Бейджи статусов */
 .task-status {
   font-size: 0.8rem;
   padding: 4px 8px;
@@ -175,27 +192,57 @@ const formattedDeadline = computed(() => {
 .status-returned .task-status { background: #ffedd5; color: #c2410c; }
 .status-unconfirmed .task-status { background: #ede9fe; color: #6d28d9; }
 
+/* Описание */
 .task-desc {
   color: var(--color-text-secondary, #666);
-  font-size: 0.95rem; margin: 0;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 0.95rem; 
+  margin: 0;
+  display: -webkit-box; 
+  -webkit-line-clamp: 2; 
+  -webkit-box-orient: vertical; 
+  overflow: hidden;
 }
 
+/* Подвал карточки */
 .task-footer {
-  display: flex; justify-content: space-between; margin-top: auto; padding-top: 12px; border-top: 1px solid #eee; font-size: 0.85rem;
+  display: flex; 
+  justify-content: space-between; 
+  margin-top: auto; 
+  padding-top: 12px; 
+  border-top: 1px solid #eee; 
+  font-size: 0.85rem;
 }
 
 .info-label { color: #999; margin-right: 4px; }
 .info-value { font-weight: 500; color: #444; }
 .overdue { color: var(--color-danger, #dc3545); font-weight: bold; }
 
-.task-financials { display: flex; gap: 10px; font-size: 0.85rem; font-weight: bold; }
+/* Финансы (Штрафы/Бонусы) */
+.task-financials { 
+  display: flex; 
+  gap: 10px; 
+  font-size: 0.85rem; 
+  font-weight: bold; 
+}
 .penalty { color: #ef4444; background: #fef2f2; padding: 2px 8px; border-radius: 6px;}
 .reward { color: #16a34a; background: #f0fdf4; padding: 2px 8px; border-radius: 6px;}
 
-.title-and-priority { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+/* Приоритеты */
+.title-and-priority { 
+  display: flex; 
+  flex-direction: column; 
+  align-items: flex-start; 
+  gap: 6px; 
+}
 
-.task-priority { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.task-priority { 
+  font-size: 0.7rem; 
+  padding: 3px 8px; 
+  border-radius: 12px; 
+  font-weight: 700; 
+  text-transform: uppercase; 
+  letter-spacing: 0.5px; 
+}
 .priority-high { background: #fee2e2; color: #b91c1c; } 
 .priority-medium { background: #fef9c3; color: #a16207; } 
 .priority-low { background: #dcfce7; color: #15803d; } 

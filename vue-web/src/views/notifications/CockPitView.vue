@@ -87,19 +87,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore} from '@/stores/authStore'
 import api from '@/services/api'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { formatDate } from '@/utils/dateFormater'
 
-// --- ИМПОРТ НОВЫХ КОМПОНЕНТОВ ---
+// --- ИМПОРТ КОМПОНЕНТОВ ---
 import ClubJoinRequest from '@/modules/notifications/ClubJoinRequest.vue'
 import ClubJoinApproved from '@/modules/notifications/ClubJoinApproved.vue'
 import ClubJoinRejected from '@/modules/notifications/ClubJoinRejected.vue'
 import ContractAssigned from '@/modules/notifications/ContractAssigned.vue'
 import KickedFromClubByClub from '@/modules/notifications/KickedFromClubByClub.vue'
+
+// Новые компоненты для задач
+import TaskAssigned from '@/modules/notifications/TaskAssigned.vue'
+import TaskModified from '@/modules/notifications/TaskModified.vue'
+import TaskOverdue from '@/modules/notifications/TaskOverdue.vue'
+import TaskCompleted from '@/modules/notifications/TaskCompleted.vue'
+import TaskConfirmed from '@/modules/notifications/TaskConfirmed.vue'
+import TaskReturned from '@/modules/notifications/TaskReturned.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -111,8 +119,14 @@ const notificationComponents = {
   'ClubJoinApproved': ClubJoinApproved,
   'ClubJoinRejected': ClubJoinRejected,
   'ContractAssigned': ContractAssigned,
-  'KickedFromClubByClub': KickedFromClubByClub
-  // Добавьте новые типы сюда
+  'KickedFromClubByClub': KickedFromClubByClub,
+  // Добавленные задачи
+  'TaskAssigned': TaskAssigned,
+  'TaskModified': TaskModified,
+  'TaskOverdue': TaskOverdue,
+  'TaskCompleted': TaskCompleted,
+  'TaskConfirmed': TaskConfirmed,
+  'TaskReturned': TaskReturned
 }
 
 // --- STATE ---
@@ -218,37 +232,47 @@ onMounted(async () => {
   loadNotifications();
 })
 
+// ДОБАВЛЕНЫ ЯРЛЫКИ ЗАДАЧ
 const categoryLabels = {
   'ClubJoinRequest': 'Join Request',       
   'ClubJoinApproved': 'Approved',          
   'ClubJoinRejected': 'Declined',          
   'ContractAssigned': 'New Contract',     
   'KickedFromClubByClub': 'Membership Revoked', 
+  'TaskAssigned': 'New Task',
+  'TaskModified': 'Task Updated',
+  'TaskOverdue': 'Task Overdue',
+  'TaskCompleted': 'Task Completed',
+  'TaskConfirmed': 'Task Confirmed',
+  'TaskReturned': 'Task Returned',
   'Informative': 'Info',
   'Alert': 'System Alert'
 }
 
 const formatCategory = (cat) => {
   if (!cat) return '';
-  
-  if (categoryLabels[cat]) {
-    return categoryLabels[cat];
-  }
-
+  if (categoryLabels[cat]) return categoryLabels[cat];
   return cat.replace(/([A-Z])/g, ' $1').trim(); 
 }
 
 const getCategoryClass = (cat) => {
-  if (['ClubJoinRequest', 'Informative'].includes(cat)) return 'badge-blue';
-  if (['ClubJoinRejected', 'Alert', 'KickedFromClubByClub'].includes(cat)) return 'badge-red';
-  if (['ClubJoinApproved'].includes(cat)) return 'badge-green';
-  if (['ContractAssigned'].includes(cat)) return 'badge-purple';
+  // Синий (обычные запросы и назначения)
+  if (['ClubJoinRequest', 'Informative', 'TaskAssigned'].includes(cat)) return 'badge-blue';
+  // Красный (отклонения, кики, просрочки)
+  if (['ClubJoinRejected', 'Alert', 'KickedFromClubByClub', 'TaskOverdue'].includes(cat)) return 'badge-red';
+  // Зеленый (выполнения, одобрения)
+  if (['ClubJoinApproved', 'TaskCompleted'].includes(cat)) return 'badge-green';
+  // Фиолетовый (контракты и подтверждения)
+  if (['ContractAssigned', 'TaskConfirmed'].includes(cat)) return 'badge-purple';
+  // Оранжевый (изменения, возврат на доработку)
+  if (['TaskModified', 'TaskReturned'].includes(cat)) return 'badge-orange';
+  
   return 'badge-gray'
 }
 </script>
 
 <style scoped>
-/* --- ОСНОВНАЯ РАЗМЕТКА (ОСТАЛАСЬ ПРЕЖНЕЙ) --- */
+/* --- ОСНОВНАЯ РАЗМЕТКА --- */
 .home-wrapper {
   padding: 20px;
   height: 92vh; 
@@ -370,7 +394,8 @@ const getCategoryClass = (cat) => {
 .badge-red { background: #ffebee; color: #c62828; }
 .badge-green { background: #e8f5e9; color: #2e7d32; }
 .badge-gray { background: #f5f5f5; color: #616161; }
-.badge-purple { background: #f3e8ff; color: #7e22ce; } /* New */
+.badge-purple { background: #f3e8ff; color: #7e22ce; } 
+.badge-orange { background: #fff7ed; color: #ea580c; } /* New for modifications */
 
 .text-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; color: #333;}
 
@@ -396,6 +421,7 @@ const getCategoryClass = (cat) => {
 .empty-selection { display: flex; align-items: center; justify-content: center; height: 100%; color: #999; }
 .dynamic-actions-area { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
 
+/* --- THEMES FOR DYNAMIC PAYLOADS --- */
 :deep(.notification-body) {
   display: flex;
   gap: 16px;
@@ -450,18 +476,20 @@ const getCategoryClass = (cat) => {
 }
 :deep(.btn:hover) { opacity: 0.9; }
 
-:deep(.request-theme) { background-color: #f0f9ff; border-color: #bae6fd; }
-:deep(.request-theme .icon-area) { background-color: #e0f2fe; color: #0284c7; }
-:deep(.btn-primary) { background-color: #0284c7; color: white; }
+/* Thematic classes */
+:deep(.request-theme), :deep(.task-theme) { background-color: #f0f9ff; border-color: #bae6fd; }
+:deep(.request-theme .icon-area), :deep(.task-theme .icon-area) { background-color: #e0f2fe; color: #0284c7; }
+:deep(.btn-primary), :deep(.btn-blue) { background-color: #0284c7; color: white; }
 
 :deep(.success-theme) { background-color: #f0fdf4; border-color: #bbf7d0; }
 :deep(.success-theme .icon-area) { background-color: #dcfce7; color: #16a34a; }
-:deep(.btn-success) { background-color: #16a34a; color: white; }
+:deep(.btn-success), :deep(.btn-green) { background-color: #16a34a; color: white; }
 
 :deep(.error-theme) { background-color: #fef2f2; border-color: #fecaca; }
 :deep(.error-theme .icon-area) { background-color: #fee2e2; color: #dc2626; }
 :deep(.btn-outline-danger) { background: transparent; border: 1px solid #dc2626; color: #dc2626; }
 :deep(.btn-outline-danger:hover) { background: #dc2626; color: white; opacity: 1; }
+:deep(.btn-red) { background-color: #dc2626; color: white; }
 
 :deep(.contract-theme) { background-color: #faf5ff; border-color: #e9d5ff; }
 :deep(.contract-theme .icon-area) { background-color: #f3e8ff; color: #9333ea; }
@@ -471,6 +499,7 @@ const getCategoryClass = (cat) => {
 :deep(.warning-theme .icon-area) { background-color: #ffedd5; color: #ea580c; }
 :deep(.btn-outline-warning) { background: transparent; border: 1px solid #ea580c; color: #ea580c; }
 :deep(.btn-outline-warning:hover) { background: #ea580c; color: white; opacity: 1; }
+:deep(.btn-orange) { background-color: #ea580c; color: white; }
 
 @media (min-width: 768px) {
   .home-grid { grid-template-columns: 400px 1fr; }

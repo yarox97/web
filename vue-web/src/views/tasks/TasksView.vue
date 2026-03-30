@@ -81,8 +81,9 @@
       </div>
 
       <div v-else-if="filteredTasks.length === 0" class="empty-state">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">📭</div>
-        <p>No tasks found.</p>
+        <div style="font-size: 3rem; margin-bottom: 1rem;"></div>
+        <p>No tasks found.<br>
+        You can have some rest ; )</p>
       </div>
 
       <div v-else class="tasks-grid">

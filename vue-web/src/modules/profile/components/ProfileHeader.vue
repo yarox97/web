@@ -51,6 +51,11 @@ const displayName = computed(() => {
   return u.userName;
 });
 
+// Получаем клубы пользователя (учитываем разные варианты названия поля с бэкенда)
+const userClubs = computed(() => {
+  return props.user?.clubDtos || props.user?.clubs || [];
+});
+
 // Проверка валидности формы для блокировки кнопки
 const isFormValid = computed(() => {
   if (!form.firstName.trim() || !form.lastName.trim()) return false;
@@ -345,7 +350,7 @@ const saveChanges = async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: -40px; 
+  margin-top: -43px; 
   padding: 0 20px 30px;
 }
 
@@ -383,7 +388,7 @@ const saveChanges = async () => {
   margin: 0;
   font-size: 1.8rem;
   font-weight: 700;
-  color: #111827;
+  color: #1d1d1d;
   line-height: 1.2;
 }
 
@@ -607,7 +612,9 @@ const saveChanges = async () => {
     text-align: left;
     width: 100%;
   }
-  
+  .full-name{
+    color: rgb(252, 252, 252);
+  }
   .info-top {
     justify-content: flex-start;
     width: 100%;

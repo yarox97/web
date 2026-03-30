@@ -4,6 +4,31 @@
     <div class="header-bar">
       <div class="header-left">
         <h2>Calendar</h2>
+        
+        <div class="mode-toggle" v-if="canViewClubTasks">
+          <button 
+            class="mode-btn" 
+            :class="{ active: activeView === 'my' }" 
+            @click="activeView = 'my'"
+          >
+            My Tasks
+          </button>
+          <button 
+            class="mode-btn" 
+            :class="{ active: activeView === 'club' }" 
+            @click="activeView = 'club'"
+          >
+            Club Tasks
+          </button>
+        </div> 
+        
+        <div v-if="activeView === 'club' && canViewClubTasks && userClubs.length > 0" class="club-selector">
+          <select v-model="selectedClubId" class="club-select">
+            <option v-for="club in userClubs" :key="club.clubId || club.id" :value="club.clubId || club.id">
+              {{ club.name || club.clubName || 'Unknown Club' }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -23,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import FullCalendar from '@fullcalendar/vue3'
@@ -39,6 +64,27 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const isLoading = ref(true)
+
+const activeView = ref('my')
+const selectedClubId = ref(null)
+
+const userClubs = computed(() => {
+  return authStore.user?.clubDtos || authStore.user?.clubs || []
+})
+
+const canViewClubTasks = computed(() => {
+  const user = authStore.user;
+  if (!user) return false;
+  
+  if (user.role === 'Admin' || user.Role === 'Admin') return true;
+  
+  const allowedRoles = ['president', 'creator', 'coach'];
+  
+  return userClubs.value.some(club => {
+    const role = (club.role || club.Role || '').toLowerCase();
+    return allowedRoles.includes(role);
+  });
+})
 
 const calendarOptions = ref({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
@@ -71,97 +117,82 @@ const calendarOptions = ref({
 const loadTasks = async () => {
   isLoading.value = true
   try {
-    // 1. Получаем базовые списки задач
-    const userTasksPromise = taskService.getUserTasks(1, 100)
-    
-    const userClubs = authStore.user?.clubDtos || authStore.user?.clubs || []
-    const clubTasksPromises = userClubs.map(club => 
-      taskService.getClubTasks(club.clubId || club.id, 1, 100)
-    )
+    let allBasicTasks = []
 
-    const [userTasksResponse, ...clubTasksResponses] = await Promise.all([
-      userTasksPromise,
-      ...clubTasksPromises
-    ])
+    if (activeView.value === 'my') {
+      // Когда запрашиваем "Мои", бэкенд УЖЕ отдает только мои задачи
+      const res = await taskService.getUserTasks(1, 100) 
+      allBasicTasks = res.data?.value?.items || res.data?.items || res.data || []
+    } else if (activeView.value === 'club' && selectedClubId.value) {
+      const res = await taskService.getClubTasks(selectedClubId.value, 1, 100)
+      allBasicTasks = res.data?.value?.items || res.data?.items || res.data || []
+    }
 
-    const userTasksList = userTasksResponse.data?.value?.items || userTasksResponse.data?.items || userTasksResponse.data || []
-    let allBasicTasks = [...userTasksList]
-    
-    clubTasksResponses.forEach(res => {
-      const data = res.data?.value || res.data
-      const tasks = data.items || data || []
-      allBasicTasks = [...allBasicTasks, ...tasks]
-    })
-
-    // Оставляем только уникальные ID
     const uniqueIds = [...new Set(allBasicTasks.map(t => t.id))];
 
-    // 2. Запрашиваем детали, чтобы получить список Receivers и статус
+    if (uniqueIds.length === 0) {
+      calendarOptions.value = { ...calendarOptions.value, events: [] };
+      return;
+    }
+
+    // Запрашиваем детали
     const detailedTasksResponses = await Promise.all(
       uniqueIds.map(id => taskService.getTaskDetails(id))
     );
 
-    // 3. ФИЛЬТРАЦИЯ: Оставляем только те задачи, где юзер — получатель
-    const currentUserId = String(authStore.user?.id || authStore.user?.userId).toLowerCase();
-    
     const detailedTasks = detailedTasksResponses
       .map(res => res.data?.value || res.data)
-      .filter(d => {
-        if (!d || !d.task || !d.receivers) return false;
-        
-        // Проверяем, есть ли текущий пользователь в списке получателей (Receivers)
-        return d.receivers.some(r => 
-          String(r.userId).toLowerCase() === currentUserId
-        );
-      });
+      .filter(d => !!(d?.task || d)); // Убрана жесткая проверка на receivers.length
 
-    // 4. Маппим отфильтрованные детали в формат событий
+    // Маппинг событий на основе твоего JSON
     const events = detailedTasks.map(detail => {
-      const task = detail.task;
-      const receivers = detail.receivers || [];
+      const task = detail.task || detail;
       
-      const myInfo = receivers.find(r => 
-        String(r.userId).toLowerCase() === currentUserId
-      );
-      
-      const isCompleted = myInfo?.taskStatus === 'Completed';
+      // Берем статус напрямую из task.myStatus (как в JSON)
+      const isCompleted = task.myStatus === 'Completed' || task.status === 'Completed';
       const isClubTask = task.clubId != null;
 
-      // Цвета: зеленый для выполненных, фиолетовый для клубных, голубой для личных
       let bgColor = isCompleted ? '#10b981' : (isClubTask ? '#8b5cf6' : '#0ea5e9');
       let borderColor = isCompleted ? '#059669' : (isClubTask ? '#7c3aed' : '#0284c7');
 
-      const startDate = task.schedule?.startDate;
-      const endDate = task.schedule?.endDate;
-      let finalStart = startDate;
-      let finalEnd = endDate;
-      let isAllDay = true;
+      // ДОСТАЕМ И СКЛЕИВАЕМ ДАТЫ (на основе объекта schedule из JSON)
+      const schedule = task.schedule || task.taskSchedule || {};
+      
+      let startStr = schedule.startDate || task.startDate;
+      if (startStr && startStr.includes('T')) {
+        startStr = startStr.split('T')[0]; // берем только YYYY-MM-DD
+      }
+      if (startStr && schedule.startTime) {
+        startStr = `${startStr}T${schedule.startTime}`; // Добавляем время (T16:00:00)
+      }
 
-      if (startDate && task.schedule?.startTime) {
-        finalStart = startDate.split('T')[0] + 'T' + task.schedule.startTime;
-        isAllDay = false; 
-
-        if (task.schedule?.endTime) {
-          const endDay = endDate ? endDate.split('T')[0] : startDate.split('T')[0];
-          finalEnd = endDay + 'T' + task.schedule.endTime;
-        } else if (endDate) {
-          finalEnd = endDate.split('T')[0] + 'T23:59:00';
-        }
+      let endStr = schedule.endDate || task.endDate;
+      if (endStr && endStr.includes('T')) {
+        endStr = endStr.split('T')[0];
+      }
+      if (endStr && schedule.endTime) {
+        endStr = `${endStr}T${schedule.endTime}`;
       }
 
       return {
         id: task.id,
         title: task.title || 'Untitled Task',
-        start: finalStart, 
-        end: finalEnd,
-        allDay: isAllDay,
+        start: startStr, 
+        end: endStr,
         backgroundColor: bgColor,
         borderColor: borderColor,
         classNames: ['custom-task-event', isCompleted ? 'is-completed-event' : '']
       }
+    }).filter(event => {
+      if (!event.start) return false;
+      return true;
     });
 
-    calendarOptions.value.events = events;
+    calendarOptions.value = {
+      ...calendarOptions.value,
+      events: events
+    };
+
   } catch (error) {
     console.error('Failed to load tasks for calendar:', error);
   } finally {
@@ -174,13 +205,25 @@ function handleEventClick(clickInfo) {
   router.push({ name: 'TaskDetails', params: { id: taskId } })
 }
 
-onMounted(() => {
+watch([activeView, selectedClubId], () => {
+  loadTasks()
+})
+
+onMounted(async () => {
+  if (!authStore.isAuthenticated) {
+    await authStore.checkAuth();
+  }
+
+  if (userClubs.value.length > 0) {
+    selectedClubId.value = userClubs.value[0].clubId || userClubs.value[0].id;
+  }
+  
   loadTasks()
 })
 </script>
 
 <style scoped>
-/* Стили остаются прежними, добавляем только зачеркивание */
+/* СТИЛИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ, КАК В ПРОШЛОМ ОТВЕТЕ */
 .content-wrapper {
   height: 100%;
   display: flex;
@@ -200,7 +243,69 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.header-left h2 { margin: 0; }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.header-left h2 { 
+  font-size: 1.5rem; 
+  font-weight: 700; 
+  color: var(--color-heading, #222);
+  margin: 0; 
+}
+
+.mode-toggle {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mode-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.mode-btn:hover:not(.active) { 
+  color: #334155; 
+}
+
+.mode-btn.active { 
+  background: white; 
+  color: var(--color-primary, #007bff); 
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+}
+
+.club-selector {
+  display: flex;
+  align-items: center;
+}
+
+.club-select {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: white;
+  color: #334155;
+  font-weight: 500;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.club-select:focus {
+  border-color: var(--color-primary, #007bff);
+}
 
 .calendar-wrapper {
   flex-grow: 1;
@@ -293,7 +398,6 @@ onMounted(() => {
   background-color: #f0f9ff !important; 
 }
 
-/* Визуальное отличие для выполненных задач */
 :deep(.is-completed-event) {
   opacity: 0.5 !important;
   text-decoration: line-through !important;
@@ -302,7 +406,12 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .header-bar { height: auto; flex-direction: column; padding: 15px; gap: 15px; }
-  .header-left { width: 100%; text-align: center; }
+  .header-left { width: 100%; flex-direction: column; align-items: stretch; gap: 12px; }
+  .header-left h2 { text-align: center; }
+  .mode-toggle { justify-content: space-between; }
+  .mode-btn { flex: 1; text-align: center; }
+  .club-selector { width: 100%; }
+  .club-select { width: 100%; }
   .calendar-wrapper { padding: 10px; }
 }
 </style>

@@ -10,7 +10,8 @@
     </div>
     
     <div v-else-if="currentMonthPayslips.length === 0" class="empty-state">
-      <p>No financial data available for {{ currentMonthName }} yet.</p>
+      <p>No financial data available for {{ currentMonthName }} yet.<br>
+      You will be able to see it as soon as you're assigned to a new contract</p>
     </div>
 
     <div v-else class="pie-container">

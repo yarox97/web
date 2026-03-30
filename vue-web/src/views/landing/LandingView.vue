@@ -65,7 +65,7 @@
             <button class="creating__btn" @click="goToRegister">Create profile</button>
          </div>
          <div class="creating__visual">
-             <div class="creating__img"></div> </div>
+             <div class="creating__img"></div> </div> 
       </section>
 
       <section class="offer" id="pricing">
